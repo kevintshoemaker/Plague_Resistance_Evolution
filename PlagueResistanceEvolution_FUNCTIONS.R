@@ -742,60 +742,84 @@ getYearVariate <- function(a){            # note: this function could work for f
   return(value)
 }
 
+
+getSurvival <- function(resistanceStatus="susceptible",plagueStatus="plague"){
+  if((plagueStatus=="noPlague")&(resistanceStatus=="susceptible")) survival = BASELINE_MEANSURV
+  if((plagueStatus=="noPlague")&(resistanceStatus=="resistant")) survival = BASELINE_MEANSURV - FITNESS_COST*(BASELINE_MEANSURV*BASELINE_PLAGUESURV_RESIST-SURVMIN_PLAGUE)
+  if((plagueStatus=="plague")&(resistanceStatus=="susceptible")) survival = BASELINE_PLAGUESURV
+  if((plagueStatus=="plague")&(resistanceStatus=="resistant")) survival = BASELINE_MEANSURV*BASELINE_PLAGUESURV_RESIST
+  return(survival)
+}
+
+getSurvival_thisYear <- function(meansurv=meansurv,deviate=deviate,cv=cv){
+  surv <- meansurv + deviate*(surv*cv)
+  surv[,"plague"] <- min(SURVMAX_PLAGUE,max(SURVMIN_PLAGUE,surv["resistant","plague"]))
+  surv[,"noPlague"] <- min(SURVMAX_NOPLAGUE,max(SURVMIN_NOPLAGUE,surv["resistant","plague"]))  
+  return(surv)
+}
+
 doSurvival <- function(PopArray=PopArray,PlagueRaster=PlagueRaster){
   #thisPop <- getValues(PopArray)
   thisPop <- PopArray
-  thisSurvRaster <- calc(NextNormalSurvRaster,fun=getYearVariate)     # first compute "normal" survival
-  thisSurvRaster[PlagueRaster==1] <- NextPlagueSurvRaster[PlagueRaster==1]     #account for plague mortality
   
-  #plot(PopArray)
-  #plot(thisSurvRaster)
-  # plot(NextNormalSurvRaster)
-  #if(plagueyear[t]){
+  surv <- getSurvival_thisYear(meansurv,deviate,cv)
   
-  thisPop <- thisPop*thisSurvRaster    # account for survival this year
-  # plot(thisSurvRaster)
-  # plot(thisPop)
-  ###################
-  # accout for change in fitness due to selection
-     #NextPlagueSurvRaster <- NextPlagueSurvRaster * thisPop
-  NextPlagueSurvRaster[(PlagueRaster==1)&(thisPop>0)] <- NextPlagueSurvRaster[(PlagueRaster==1)&(thisPop>0)] + 
-    PlagueResistancePotentialRaster[(PlagueRaster==1)&(thisPop>0)]              # account for development of plague resistance during plague
-  NextPlagueSurvRaster[NextPlagueSurvRaster>SURVMAX_PLAGUE] <- SURVMAX_PLAGUE
-  
-  #  plot(NextPlagueSurvRaster) 
-  
-  ###################
-  # account for fitness costs due to selection
-  NextNormalSurvRaster[(PlagueRaster==1)&(thisPop>0)] <- NextNormalSurvRaster[(PlagueRaster==1)&(thisPop>0)] - 
-    PlagueResistancePotentialRaster[(PlagueRaster==1)&(thisPop>0)] * FITNESS_COST     # account for fitness cost during plague
-  NextNormalSurvRaster[NextNormalSurvRaster<SURVMIN_NOPLAGUE] <- SURVMIN_NOPLAGUE
-  
-  #  plot(NextNormalSurvRaster) 
-  
-  NextPlagueSurvRaster[(PlagueRaster==0)&(thisPop>0)] <- NextPlagueSurvRaster[(PlagueRaster==0)&(thisPop>0)] - 
-    PlagueResistancePotentialRaster[(PlagueRaster==0)&(thisPop>0)] * FITNESS_COST   # account for fitness cost during no plague 
-  NextPlagueSurvRaster[NextPlagueSurvRaster<SURVMIN_PLAGUE] <- SURVMIN_PLAGUE
-  
-  #  plot(NextPlagueSurvRaster) 
-  # account for fitness costs due to selection
-  NextNormalSurvRaster[(PlagueRaster==0)&(thisPop>0)] <- NextNormalSurvRaster[(PlagueRaster==0)&(thisPop>0)] + 
-    PlagueResistancePotentialRaster[(PlagueRaster==0)&(thisPop>0)] * FITNESS_COST     # account for loss of resistance during no plague
-  NextNormalSurvRaster[NextNormalSurvRaster>SURVMAX_NOPLAGUE] <- SURVMAX_NOPLAGUE
-  
-  
-  #plot(NextNormalSurvRaster)
-  # }else{
-  #   thisPop <- thisPop*thisSurvRaster   # no demographic stochasticity here... 
-  #   #plot(thisPop)
-  # }
-  
-  i=rasterNames[2]
-  for(i in rasterNames){
-    if(i!="PopArray")
-    assign(i,eval(parse(text=i)),envir = .GlobalEnv)
+  for(status in c("resistant","susceptible")){
+    thisPop[[status]][PlagueRaster==1] <- thisPop[[status]][PlagueRaster==1]*surv[status,"plague"]
+    thisPop[[status]][PlagueRaster==0] <- thisPop[[status]][PlagueRaster==0]*surv[status,"noPlague"]
   }
   
+  # thisSurvRaster <- calc(NextNormalSurvRaster,fun=getYearVariate)     # first compute "normal" survival
+  # thisSurvRaster[PlagueRaster==1] <- NextPlagueSurvRaster[PlagueRaster==1]     #account for plague mortality
+  # 
+  # #plot(PopArray)
+  # #plot(thisSurvRaster)
+  # # plot(NextNormalSurvRaster)
+  # #if(plagueyear[t]){
+  # 
+  # thisPop <- thisPop*thisSurvRaster    # account for survival this year
+  # # plot(thisSurvRaster)
+  # # plot(thisPop)
+  # ###################
+  # # accout for change in fitness due to selection
+  #    #NextPlagueSurvRaster <- NextPlagueSurvRaster * thisPop
+  # NextPlagueSurvRaster[(PlagueRaster==1)&(thisPop>0)] <- NextPlagueSurvRaster[(PlagueRaster==1)&(thisPop>0)] + 
+  #   PlagueResistancePotentialRaster[(PlagueRaster==1)&(thisPop>0)]              # account for development of plague resistance during plague
+  # NextPlagueSurvRaster[NextPlagueSurvRaster>SURVMAX_PLAGUE] <- SURVMAX_PLAGUE
+  # 
+  # #  plot(NextPlagueSurvRaster) 
+  # 
+  # ###################
+  # # account for fitness costs due to selection
+  # NextNormalSurvRaster[(PlagueRaster==1)&(thisPop>0)] <- NextNormalSurvRaster[(PlagueRaster==1)&(thisPop>0)] - 
+  #   PlagueResistancePotentialRaster[(PlagueRaster==1)&(thisPop>0)] * FITNESS_COST     # account for fitness cost during plague
+  # NextNormalSurvRaster[NextNormalSurvRaster<SURVMIN_NOPLAGUE] <- SURVMIN_NOPLAGUE
+  # 
+  # #  plot(NextNormalSurvRaster) 
+  # 
+  # NextPlagueSurvRaster[(PlagueRaster==0)&(thisPop>0)] <- NextPlagueSurvRaster[(PlagueRaster==0)&(thisPop>0)] - 
+  #   PlagueResistancePotentialRaster[(PlagueRaster==0)&(thisPop>0)] * FITNESS_COST   # account for fitness cost during no plague 
+  # NextPlagueSurvRaster[NextPlagueSurvRaster<SURVMIN_PLAGUE] <- SURVMIN_PLAGUE
+  # 
+  # #  plot(NextPlagueSurvRaster) 
+  # # account for fitness costs due to selection
+  # NextNormalSurvRaster[(PlagueRaster==0)&(thisPop>0)] <- NextNormalSurvRaster[(PlagueRaster==0)&(thisPop>0)] + 
+  #   PlagueResistancePotentialRaster[(PlagueRaster==0)&(thisPop>0)] * FITNESS_COST     # account for loss of resistance during no plague
+  # NextNormalSurvRaster[NextNormalSurvRaster>SURVMAX_NOPLAGUE] <- SURVMAX_NOPLAGUE
+  # 
+  # 
+  # #plot(NextNormalSurvRaster)
+  # # }else{
+  # #   thisPop <- thisPop*thisSurvRaster   # no demographic stochasticity here... 
+  # #   #plot(thisPop)
+  # # }
+  # 
+  # i=rasterNames[2]
+  # for(i in rasterNames){
+  #   if(i!="PopArray")
+  #   assign(i,eval(parse(text=i)),envir = .GlobalEnv)
+  # }
+  # 
   return(thisPop)
 }
 
@@ -806,7 +830,9 @@ doSurvival <- function(PopArray=PopArray,PlagueRaster=PlagueRaster){
 doDDSurvival <- function(){
   
   thisPop <- PopArray
-  thisPop[PopArray>(MAXABUND*1.15)] <- MAXABUND*1.15  # kill off all individuals in populations above the threshold
+  for(status in c("resistant","susceptible")){
+    thisPop[[status]][PopArray>(MAXABUND*1.15)] <- MAXABUND*1.15  # kill off all individuals in populations above the threshold
+  }
   return(thisPop)
   
 }

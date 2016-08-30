@@ -6,7 +6,7 @@
 
 # consider scalar demographic model for now, but with potential for matrix model
 
-# TODO: **** make sure that the fitness cost links back to the plague resistance... not just affecting non-plague years
+# 8/29/16: changed to consider a binary resistance trait that is potentially a function of several gene loci... 
 
 ############
 ## CLEAR WORKSPACE
@@ -23,9 +23,8 @@ library("raster")
 library("secr")
 library("igraph")
 
-
 ############
-## GLOBAL VARIABLES: DEFINE RANGE OF POSSIBLE SCENARIOS
+## GLOBAL VARIABLES: DEFINE RANGE OF POSSIBLE SCENARIOS  [not implemented yet]
 ############
 
 # Bg : "background"
@@ -33,7 +32,7 @@ library("igraph")
 BgDiseaseSpatialExtents <- c("gridcell","subpatch","patch","regional","landscape")
 BgDiseaseFrequencies <- c(1,2,3,5,10,20,30,40,50)
 
-ProbTransmissions <- seq(0,1,by=0.1)
+  # ProbTransmissions <- seq(0,1,by=0.1)   # for now, no transmission
 
 
 ############
@@ -83,6 +82,9 @@ CV_FECUNDITY <- 0.5
          # minimum survival under plague (completely naive population)
 BASELINE_PLAGUESURV <- 0.05
 
+         # survival under plague for resistant individuals
+BASELINE_PLAGUESURV_RESIST <- 0.5
+
          # mean change in the ability to withstand plague among the survivor population. (accounts for limited heritability)
 SURVCHANGE_NEXTPLAGUE <- 0.05 
 
@@ -123,6 +125,9 @@ SURVMIN_PLAGUE <- 0.01
 
          # maximum survival for plague populations
 SURVMAX_PLAGUE <- 0.75
+
+         # for now, just a single plague resistance locus
+NLOCI <- 1 
 
 ############
 ## SIMULATION CONTROLS
@@ -190,10 +195,6 @@ plot(patchIDRaster)
 
 PlagueModel <- GetPlagueModel()    # for now, use fake plague model- will be a statistical model
 
-
-
-
-
 ######################################
 #########################
 ######  INITIALIZE!
@@ -248,21 +249,50 @@ plot(NextNormalSurvRaster)
 
 temp <- rnorm(nPatches,SURVCHANGE_NEXTPLAGUE,SD_SURVCHANGE_NEXTPLAGUE)
 temp <- ifelse(temp<0,0.01,temp)
-PlagueResistancePotentialRaster <- reclassify(patchIDRaster,rcl=cbind(c(1:nPatches),temp))
+PlagueResistancePotentialRaster <- reclassify(patchIDRaster,rcl=cbind(c(1:nPatches),temp))    # deprecate? change to initial frequency?
 plot(PlagueResistancePotentialRaster)
 
+
+InitFreq <- list()
+InitFreq[["gene1"]] <- PlagueResistancePotentialRaster
+InitFreq <- stack(InitFreq)
+
+
+#####################
+# FUNCTION FOR DETERMINING RESISTANCE STATUS FROM GENOTYPE
+#####################
+
+# ultimately this will be a function of underlying binary genotypes. 
+     # e.g., if factor A is present in 20% of the pop and factor B is present in 5% of the pop and 
+     # both factors are necessary for resistance, then 1% of the population will be resistant. This function could be complex.
+     #  i.e., either factors (A and B) OR (C and D) lead to resistance.
+
+# this can be simple as long as we don't assume linkage or some such thing!
+
+IsResistant <- function(InitDensRaster,InitFreq){
+  ResistRaster <- round(InitDensRaster*InitFreq[["gene1"]])  # for now, a single gene model. Will be more complicated
+  return(ResistRaster)
+}
 
 #####################
 # INITIALIZE POPULATION
 #####################
 
-PopArray <- InitDensRaster  # current abundance
-PopArray2 <- reclassify(patchIDRaster,rcl=c(-Inf,Inf,0))    # for testing
-ndx <- sample(which(!is.na(PopArray2@data@values)),size=3)
-PopArray2[ndx] <- 1000   # initialize population in random locations
-PopArray <- PopArray2
+
+### Code block for pop starting from small loci
+
+InitDensRaster2 <- reclassify(patchIDRaster,rcl=c(-Inf,Inf,0))    # for testing
+ndx <- sample(which(!is.na(InitDensRaster2@data@values)),size=3)
+InitDensRaster2[ndx] <- 1000   # initialize population in random locations
+InitDensRaster <- InitDensRaster2
 #PopArray2 <- InitDensRaster   # copy, for dispersal algorithm... 
 
+
+
+PopArray <- list()
+PopArray[["resistant"]] <- IsResistant(InitDensRaster,InitFreq)      # structure by susceptible and resistant. 
+PopArray[["susceptible"]] <- InitDensRaster - PopArray[["resistant"]]
+PopArray <- stack(PopArray)
 
 plot(PopArray)
   
@@ -279,10 +309,24 @@ plot(PopArray)
 
 PlagueRaster_template <- reclassify(patchIDRaster,rcl=c(-Inf,Inf,0))   
 
-PlagueRaster <- doPlague(PlagueRaster=PlagueRaster_template,PopArray = reclassify(PopArray,rcl=c(-Inf,Inf,0)))
+PlagueRaster <- doPlague(PlagueRaster=PlagueRaster_template, PopArray=reclassify(patchIDRaster,rcl=c(-Inf,Inf,0)))
 
 
 plot(PlagueRaster)
+
+
+####################
+# INITIALIZE SURVIVAL
+####################
+
+meansurv <- matrix(0,nrow=2,ncol=2)    # survival matrix (mean)
+rownames(meansurv) <- c("resistant","susceptible")
+colnames(meansurv) <- c("plague","noPlague")
+meansurv["resistant","noPlague"] <- getSurvival("resistant","noPlague")
+meansurv["resistant","plague"] <-   getSurvival("resistant","plague")
+meansurv["susceptible","plague"] <- getSurvival("susceptible","plague")
+meansurv["susceptible","noPlague"] <- getSurvival("susceptible","noPlague")
+meansurv
 
 ####################
 # START LOOP THROUGH YEARS
@@ -290,7 +334,7 @@ plot(PlagueRaster)
 
 
     # names of important raster maps to save to file etc...
-rasterNames  <- c("PopArray","NextPlagueSurvRaster","NextNormalSurvRaster","PlagueResistancePotentialRaster")
+rasterNames  <- c("PopArray","NextPlagueSurvRaster","NextNormalSurvRaster","PlagueResistancePotentialRaster")   # Deprecate?
   
 # t=which(plagueyear)[1]
 t=0
