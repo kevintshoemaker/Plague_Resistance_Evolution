@@ -27,9 +27,9 @@ library("igraph")
 ## GLOBAL VARIABLES: DEFINE RANGE OF POSSIBLE SCENARIOS  [not implemented yet]
 ############
 
-# Bg : "background"
+# Bg : "background"  - for looking at intermittent selection...
 
-BgDiseaseSpatialExtents <- c("gridcell","subpatch","patch","regional","landscape")
+BgDiseaseSpatialExtents <- c("gridcell","subpatch","patch","regional","landscape")   
 BgDiseaseFrequencies <- c(1,2,3,5,10,20,30,40,50)
 
   # ProbTransmissions <- seq(0,1,by=0.1)   # for now, no transmission
@@ -65,9 +65,9 @@ MINDENS <- 15
 MINABUND <- MINDENS*CELLAREA
 
          # maximum survival under plague (limit to resistance)
-RESISTANCE_LIMIT <- 0.75  
+#   RESISTANCE_LIMIT <- 0.75   # deprecated  
 
-         # survival in a non_plague year (baseline survival for a naive population under no plague)
+         # baseline survival in a non_plague year (baseline survival for a naive population under no plague)
 BASELINE_MEANSURV <- 0.6
 
          # Variation in survival among years, expressed as CV
@@ -86,15 +86,33 @@ BASELINE_PLAGUESURV <- 0.05
 BASELINE_PLAGUESURV_RESIST <- 0.5
 
          # mean change in the ability to withstand plague among the survivor population. (accounts for limited heritability)
-SURVCHANGE_NEXTPLAGUE <- 0.05 
+#SURVCHANGE_NEXTPLAGUE <- 0.05  # deprecated
 
          # variation in the ability to survival plague among survivors, expressed as a SD [variation in standing genetic propensity to evolve resistance]
-SD_SURVCHANGE_NEXTPLAGUE <- 0.05
+#SD_SURVCHANGE_NEXTPLAGUE <- 0.05    # deprecated
 
          # plague survival rate as a function of the resistance factors?? [TODO] 
 
          # change in the ability to survive in a non-plague year, as a percentage of the fitness benefit in a plague year (fitness costs to resistance)
-FITNESS_COST <- 0.1 
+#FITNESS_COST <- 0.1    # now means the degree to which survival is reduced for resistant individuals in nonplague years
+
+NGENES <- 2
+
+NWAYS_OF_GETTING <- 1   # ways of getting resistance
+RESISTANCE_SCENARIOS <- list()
+RESISTANCE_SCENARIOS[[1]] <- c("factor1","factor2")   # for now, needs both factors! 
+names(RESISTANCE_SCENARIOS[[1]]) <- c("AND","AND")   # names follow boolean conventions. In this case, both factors are required for resistance
+
+FITNESS_COST <- numeric(NGENES)
+
+FITNESS_COST[1] <- 0.1     # fitness cost of the first gene
+FITNESS_COST[1] <- 0.05     # fitness cost of the second gene
+
+INITFREQ <- numeric(NGENES)
+INITFREQ[1] <- 0.09
+INITFREQ[2] <- 0.1
+
+INITFREQ_SD <- 0.03     # degree of variation in initial frequency of resistance.
 
          # maximum annual dispersal distance (m)  
 MAXDISPERSAL <- 500
@@ -103,7 +121,7 @@ MAXDISPERSAL <- 500
 NFOCI <- 1
 
          # rate of transmission (per-disperser probability of initiating an outbreak in recipient population) (under optimal plague conditions?)
-PROB_TRANSMISSION <- 0
+PROB_TRANSMISSION <- 0  # [not implemented yet...] [maybe don't need...] [but critical if looking at tradeoffs]
 
          # dispersal rate (independent of density)
 BASELINE_DISPERSAL <- 0.05
@@ -123,11 +141,10 @@ SURVMAX_NOPLAGUE <- 0.9
          # minimum survival for plague populations
 SURVMIN_PLAGUE <- 0.01
 
-         # maximum survival for plague populations
+         # maximum survival for plague populations (circumscribing env stochasticity at the population)
 SURVMAX_PLAGUE <- 0.75
 
-         # for now, just a single plague resistance locus
-NLOCI <- 1 
+
 
 ############
 ## SIMULATION CONTROLS
@@ -139,17 +156,20 @@ NYEARS <- 20
 ## SET BASE DIRECTORY
 ############
 
-KEVIN_LAPTOP <- FALSE #   TRUE # 
-KEVIN_OFFICEPC <- TRUE # FALSE # 
+KEVIN_LAPTOP <- TRUE # FALSE #   
+KEVIN_OFFICEPC <- FALSE # TRUE # 
 
 if(KEVIN_LAPTOP) BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
 if(KEVIN_OFFICEPC) BASE_DIR <- "E:\\Dropbox\\PlagueModeling\\ResistanceEvolution"
+
+if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
+if(KEVIN_OFFICEPC) BASE_DIR <- "E:\\GI\\Plague_Resistance_Evolution"
 
 ############
 ## SET UP WORKSPACE (define global variables)
 ############
 
-RSCRIPT_DIR <- sprintf("%s\\Rscripts",BASE_DIR)
+ # RSCRIPT_DIR <- sprintf("%s\\Rscripts",GIT_DIR)
 DATA_DIR <- sprintf("%s\\Data",BASE_DIR)
 
 FIGS_DIR <- sprintf("%s\\RawFigs",BASE_DIR)
@@ -160,7 +180,7 @@ setwd(DATA_DIR)
 # LOAD FUNCTIONS
 #####################
 
-setwd(RSCRIPT_DIR)
+setwd(GIT_DIR)
 source("PlagueResistanceEvolution_FUNCTIONS.R")
 
 #####################
@@ -210,7 +230,7 @@ plot(InitDensRaster)
 
 
 #######################
-# INITIALIZE RESISTANCE FACTORS
+# INITIALIZE RESISTANCE FACTORS [keep for now- will be multiple genes in the model somehow]
 #######################
 
 # NFACTORS = 1
@@ -228,35 +248,49 @@ plot(InitDensRaster)
 # ResistanceFactors <- stack(ResistanceFactors)
 
 #######################
-# INITIALIZE PLAGUE SURVIVAL
+# INITIALIZE PLAGUE SURVIVAL [deprecated]
 #######################
 
-NextPlagueSurvRaster <- patchRaster*BASELINE_PLAGUESURV
-plot(NextPlagueSurvRaster)
+# NextPlagueSurvRaster <- patchRaster*BASELINE_PLAGUESURV
+# plot(NextPlagueSurvRaster)
 
 #######################
-# INITIALIZE NORMAL SURVIVAL
+# INITIALIZE NORMAL SURVIVAL [deprecated?]
 #######################
 
-NextNormalSurvRaster <- patchRaster*BASELINE_MEANSURV
-plot(NextNormalSurvRaster)
-
+# NextNormalSurvRaster <- patchRaster*BASELINE_MEANSURV
+# plot(NextNormalSurvRaster)
 
 #######################
-# INITIALIZE PLAGUE RESISTANCE POTENTIAL
+# STRUCTURED SURVIVAL?  
+#######################
+
+#  NOTE: ultimately, each gene will have its own fitness cost?? [like it!]
+
+#######################
+# INITIALIZE ALLELE FREQUENCIES
 #######################
 # NOTE: Some regions are more likely to evolve faster because they have greater percentages of those genes that can confer resistance. 
 
-temp <- rnorm(nPatches,SURVCHANGE_NEXTPLAGUE,SD_SURVCHANGE_NEXTPLAGUE)
-temp <- ifelse(temp<0,0.01,temp)
-PlagueResistancePotentialRaster <- reclassify(patchIDRaster,rcl=cbind(c(1:nPatches),temp))    # deprecate? change to initial frequency?
-plot(PlagueResistancePotentialRaster)
+# temp <- rnorm(nPatches,SURVCHANGE_NEXTPLAGUE,SD_SURVCHANGE_NEXTPLAGUE)
+# temp <- ifelse(temp<0,0.01,temp)
+# PlagueResistancePotentialRaster <- reclassify(patchIDRaster,rcl=cbind(c(1:nPatches),temp))    # deprecate? change to initial frequency?
+# plot(PlagueResistancePotentialRaster)  # now this can be an allele frequency map
 
+InitFreqList <- list()
 
-InitFreq <- list()
-InitFreq[["gene1"]] <- PlagueResistancePotentialRaster
-InitFreq <- stack(InitFreq)
+for(i in 1:NGENES){
+  name <- sprintf("gene%s",i)
+  temp <- rnorm(nPatches,INITFREQ[1],INITFREQ_SD[1])
+  temp <- ifelse(temp<0,0.01,temp)
+  InitFreqList[[name]] <- reclassify(patchIDRaster,rcl=cbind(c(1:nPatches),temp))
+}
 
+plot(InitFreqList[["gene1"]])
+
+InitFreqList <- stack(InitFreqList)
+
+plot(InitFreqList)
 
 #####################
 # FUNCTION FOR DETERMINING RESISTANCE STATUS FROM GENOTYPE
@@ -269,10 +303,53 @@ InitFreq <- stack(InitFreq)
 
 # this can be simple as long as we don't assume linkage or some such thing!
 
-IsResistant <- function(InitDensRaster,InitFreq){
-  ResistRaster <- round(InitDensRaster*InitFreq[["gene1"]])  # for now, a single gene model. Will be more complicated
+# t <- c(NA,NA,)
+# IsResistantFunc <- function(abundraster,freqstack){
+#   
+#       # for now, assume you need both genes to be resistant
+# }
+
+    # use a closure?
+
+# TODO: account for multiple different ways of getting resistance
+# TODO: keep track of frequencies of each factor within the resistant and susceptible pools (so they can be enriched appropriately)
+resistfunc <- function(ngenes){      # this function assumes that all factors are needed for resistance                    
+  nargs <- ngenes
+  arguments <- paste("X",c(1:nargs),sep="")
+  arguments2 <- paste(arguments, collapse=",")
+  arguments3 <- paste(arguments, collapse="*")
+  expression <- sprintf("function(%s) %s ",arguments2,arguments3)
+  eval(parse(text=expression))
+}
+
+
+IsResistant <- function(DensRaster=InitDensRaster,FreqList=InitFreqList,fungen=resistfunc){
+  temp <- overlay(FreqList,fun=fungen(NGENES)) #round(InitDensRaster*InitFreq[["gene1"]])   # freq of resist for each grid cell
+  ResistRaster <- overlay(DensRaster,temp,fun=function(x,y) x*y)      # numbers of resistant individuals in each grid cell
   return(ResistRaster)
 }
+
+    # use a closure    
+FCfunc <- function(ngenes){   # assume that fitness costs are simply additive
+  nargs <- ngenes
+  arguments <- paste("X",c(1:nargs),sep="")
+  arguments2 <- paste(arguments, collapse=",")
+  arguments3 <- paste(paste("FITNESS_COST[",c(1:ngenes),"]*",arguments,sep=""),collapse="+")
+  
+      #FITNESS_COST[1]*X1 + FITNESS_COST[2]*X2 
+  expression <- sprintf("function(%s) %s ",arguments2,arguments3)
+  eval(parse(text=expression))
+}
+
+FitnessCost <- function(FreqList=InitFreqList){
+  FCraster <- overlay(FreqList,fun=FCfunc(NGENES))  # degree of fitness cost
+  return(FCraster)
+}
+
+
+   # function for computing the allele (factor) frequecies for the structured population (resistant and susceptible...)
+
+
 
 #####################
 # INITIALIZE POPULATION
@@ -288,14 +365,38 @@ InitDensRaster <- InitDensRaster2
 #PopArray2 <- InitDensRaster   # copy, for dispersal algorithm... 
 
 
+GetStructuredPop <- function(DensRaster=InitDensRaster,FreqList=InitFreqList){
+  Pop <- list()
+  Pop[["resistant"]] <- IsResistant(DensRaster,FreqList)      # structure by susceptible and resistant. 
+  Pop[["susceptible"]] <- DensRaster - Pop[["resistant"]]
+  Pop <- stack(Pop)
+  return(Pop)
+}
 
-PopArray <- list()
-PopArray[["resistant"]] <- IsResistant(InitDensRaster,InitFreq)      # structure by susceptible and resistant. 
-PopArray[["susceptible"]] <- InitDensRaster - PopArray[["resistant"]]
-PopArray <- stack(PopArray)
+        # use information on frequencies of resistance factors to struture population into resistance categories
+GetStructuredPop <- function(DensRaster=InitDensRaster,FreqList=InitFreqList){
+  Pop <- list()
+  Pop[["resistant"]] <- IsResistant(DensRaster,FreqList)      # structure by susceptible and resistant. 
+  Pop[["susceptible"]] <- DensRaster - Pop[["resistant"]]
+  Pop <- stack(Pop)
+  return(Pop)
+}
+
+
+PopArray <- GetStructuredPop(InitDensRaster)
 
 plot(PopArray)
   
+
+# keep track of resistance frequencies in each 
+GetStructuredPop <- function(DensRaster=InitDensRaster,FreqList=InitFreqList){
+  Freq <- list()
+  Freq[["resistant"]] <- IsResistant(DensRaster,FreqList)      # structure by susceptible and resistant. 
+  Pop[["susceptible"]] <- DensRaster - Pop[["resistant"]]
+  Pop <- stack(Pop)
+  return(Pop)
+}
+
 ######################
 # INITIALIZE PLAGUE PROCESS   [KTS: moving away from this and towards a statistical model]
 ######################

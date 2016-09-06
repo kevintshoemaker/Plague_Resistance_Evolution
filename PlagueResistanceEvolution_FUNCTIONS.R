@@ -51,7 +51,7 @@ GetPlagueModel <- function(){
   fakeplaguepops <- sample(c(0:5),faken,replace=T)
   fakeplagueprob <- plogis(INTERCEPT + BETADENS*fakedens + BETAPLAGUE*fakeplaguepops + INTERACTION*fakeplaguepops*fakedens)
   
-  plot(fakeplagueprob~fakeplaguepops)
+  # plot(fakeplagueprob~fakeplaguepops)
   #plot(fakeplagueprob~fakedens)
   fakeplague <- rbinom(faken,1,fakeplagueprob)
   
@@ -744,6 +744,7 @@ getYearVariate <- function(a){            # note: this function could work for f
 
 
 getSurvival <- function(resistanceStatus="susceptible",plagueStatus="plague"){
+  survival=0
   if((plagueStatus=="noPlague")&(resistanceStatus=="susceptible")) survival = BASELINE_MEANSURV
   if((plagueStatus=="noPlague")&(resistanceStatus=="resistant")) survival = BASELINE_MEANSURV - FITNESS_COST*(BASELINE_MEANSURV*BASELINE_PLAGUESURV_RESIST-SURVMIN_PLAGUE)
   if((plagueStatus=="plague")&(resistanceStatus=="susceptible")) survival = BASELINE_PLAGUESURV
@@ -758,9 +759,22 @@ getSurvival_thisYear <- function(meansurv=meansurv,deviate=deviate,cv=cv){
   return(surv)
 }
 
-doSurvival <- function(PopArray=PopArray,PlagueRaster=PlagueRaster){
+
+     # note: maybe we should just break out poparray by resistance during the survival function... Otherwise just frequencies... 
+     #     in that case, we need to update frequencies here too. This is where "enrichment" happens.
+doSurvival <- function(DensRaster=InitDensRaster,PlagueRaster=PlagueRaster,Freqlist=FreqList){   # PopArray=PopArray
   #thisPop <- getValues(PopArray)
-  thisPop <- PopArray
+  
+  thisPop <- GetStructuredPop(DensRaster,FreqList)    # break out population into resistant and non-resistant
+  
+  structuredFreq <- GetStructuredFreqList(DensRaster,FreqList)  # break out resistance factors into resistant and non-resistant 
+  
+  FCRaster <- FitnessCost(FreqList=InitFreqList)      # compute fitness costs
+  
+  thisSurv <- overlay(PopArray,
+  
+  
+  
   
   surv <- getSurvival_thisYear(meansurv,deviate,cv)
   
