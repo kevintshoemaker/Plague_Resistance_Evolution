@@ -14,7 +14,6 @@
 
 rm(list=ls())
 
-
 ############
 ## LOAD PACKAGES
 ############
@@ -22,128 +21,6 @@ rm(list=ls())
 library("raster")
 library("secr")
 library("igraph")
-
-############
-## GLOBAL VARIABLES: DEFINE RANGE OF POSSIBLE SCENARIOS  [not implemented yet]
-############
-
-# Bg : "background"  - for looking at intermittent selection...
-
-BgDiseaseSpatialExtents <- c("gridcell","subpatch","patch","regional","landscape")   
-BgDiseaseFrequencies <- c(1,2,3,5,10,20,30,40,50)
-
-  # ProbTransmissions <- seq(0,1,by=0.1)   # for now, no transmission
-
-
-############
-## USER-DEFINED VARIABLES
-############
-
-          # define the gridded landscape
-NROWS <- 50
-NCOLS <- 50
-
-CELLAREA <- 1     # in hectares
-CELLAREA_M2 <- CELLAREA*10000   # in square meters
-
-CELLWIDTH <- sqrt(CELLAREA_M2)    # in meters
-HALFCELLWIDTH <- CELLWIDTH/2
-
-          # define the clustering (degree to which species prefers to establish residence near members of its own kind)
-               # 1 is complete tendency to cluster in space. 0 is agnostic to members of its own kind. -1 is tendency to avoid members of its own kind
-SNUGGLE <- 0.75
-
-          # define the percent of the landscape that is suitable
-PER_SUITABLE <- 0.4
-
-          # define the maximum per-cell number of individuals
-MAXDENS <- 100
-MAXABUND <- MAXDENS * CELLAREA
-
-         # define the minimum per-cell number of individuals (provide a simple hard Allee effect)
-MINDENS <- 15
-MINABUND <- MINDENS*CELLAREA
-
-         # maximum survival under plague (limit to resistance)
-#   RESISTANCE_LIMIT <- 0.75   # deprecated  
-
-         # baseline survival in a non_plague year (baseline survival for a naive population under no plague)
-BASELINE_MEANSURV <- 0.6
-
-         # Variation in survival among years, expressed as CV
-CV_SURVIVAL <- 0.2 
-
-         # fecundity in a non-plague year (baseline, number of offspring per adult, not sex structured)
-BASELINE_MEANFEC <- 3.2
-
-         # temporal variation in fecundity, expressed as a CV
-CV_FECUNDITY <- 0.5 
-
-         # minimum survival under plague (completely naive population)
-BASELINE_PLAGUESURV <- 0.05
-
-         # survival under plague for resistant individuals
-BASELINE_PLAGUESURV_RESIST <- 0.5
-
-         # mean change in the ability to withstand plague among the survivor population. (accounts for limited heritability)
-#SURVCHANGE_NEXTPLAGUE <- 0.05  # deprecated
-
-         # variation in the ability to survival plague among survivors, expressed as a SD [variation in standing genetic propensity to evolve resistance]
-#SD_SURVCHANGE_NEXTPLAGUE <- 0.05    # deprecated
-
-         # plague survival rate as a function of the resistance factors?? [TODO] 
-
-         # change in the ability to survive in a non-plague year, as a percentage of the fitness benefit in a plague year (fitness costs to resistance)
-#FITNESS_COST <- 0.1    # now means the degree to which survival is reduced for resistant individuals in nonplague years
-
-NGENES <- 2
-
-NWAYS_OF_GETTING <- 1   # ways of getting resistance
-RESISTANCE_SCENARIOS <- list()
-RESISTANCE_SCENARIOS[[1]] <- c("factor1","factor2")   # for now, needs both factors! 
-names(RESISTANCE_SCENARIOS[[1]]) <- c("AND","AND")   # names follow boolean conventions. In this case, both factors are required for resistance
-
-FITNESS_COST <- numeric(NGENES)
-
-FITNESS_COST[1] <- 0.1     # fitness cost of the first gene
-FITNESS_COST[1] <- 0.05     # fitness cost of the second gene
-
-INITFREQ <- numeric(NGENES)
-INITFREQ[1] <- 0.09
-INITFREQ[2] <- 0.1
-
-INITFREQ_SD <- 0.03     # degree of variation in initial frequency of resistance.
-
-         # maximum annual dispersal distance (m)  
-MAXDISPERSAL <- 500
-
-         # number of colony foci to establish (within the dispersal range) after colonies get below the low-density threshold
-NFOCI <- 1
-
-         # rate of transmission (per-disperser probability of initiating an outbreak in recipient population) (under optimal plague conditions?)
-PROB_TRANSMISSION <- 0  # [not implemented yet...] [maybe don't need...] [but critical if looking at tradeoffs]
-
-         # dispersal rate (independent of density)
-BASELINE_DISPERSAL <- 0.05
-
-         # dispersal distance (m) for plagued-out populations
-MAXDISPERSAL_PLAGUE <- 1000   # individuals from plagued-out populations might move farther than normal population
-
-         # dispersal rate for plagued-out populations
-PLAGUE_DISPERSAL <- 0.95     # individuals from plagued-out populations might have a higher tendency to move than normal populations- this can affect the spread of plague and the spread of plague resistance genes... 
-
-         # minimum survival for non-plague populations
-SURVMIN_NOPLAGUE <- 0.1
-
-         # maximum survival for non-plague populations
-SURVMAX_NOPLAGUE <- 0.9
-
-         # minimum survival for plague populations
-SURVMIN_PLAGUE <- 0.01
-
-         # maximum survival for plague populations (circumscribing env stochasticity at the population)
-SURVMAX_PLAGUE <- 0.75
-
 
 
 ############
@@ -156,14 +33,14 @@ NYEARS <- 20
 ## SET BASE DIRECTORY
 ############
 
-KEVIN_LAPTOP <- TRUE # FALSE #   
-KEVIN_OFFICEPC <- FALSE # TRUE # 
+KEVIN_LAPTOP <- FALSE #   TRUE # 
+KEVIN_OFFICEPC <- TRUE # FALSE # 
 
 if(KEVIN_LAPTOP) BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
 if(KEVIN_OFFICEPC) BASE_DIR <- "E:\\Dropbox\\PlagueModeling\\ResistanceEvolution"
 
 if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
-if(KEVIN_OFFICEPC) BASE_DIR <- "E:\\GI\\Plague_Resistance_Evolution"
+if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
 
 ############
 ## SET UP WORKSPACE (define global variables)
@@ -183,22 +60,17 @@ setwd(DATA_DIR)
 setwd(GIT_DIR)
 source("PlagueResistanceEvolution_FUNCTIONS.R")
 
+############
+## USER-DEFINED VARIABLES
+############
+
+UserParams <- DefineUserParams()
+
 #####################
 # INITIALIZE DISPERSAL   (for both plague and no plague... )   
 #####################
 
-InitializeDispersal()
-
-# plot(tempmask)
-# ?make.grid
-# ?make.mask
-# ?randomHabitat
-# 
-# plot(temppatches)
-# attributes(temppatches)
-# class(temppatches)
-# names(temppatches)
-# covariates(temppatches)$habitat
+InitializeDispersal(UserParams)
 
 ########################
 # INITIALIZE LANDSCAPE
@@ -230,58 +102,18 @@ plot(InitDensRaster)
 
 
 #######################
-# INITIALIZE RESISTANCE FACTORS [keep for now- will be multiple genes in the model somehow]
-#######################
-
-# NFACTORS = 1
-# 
-# ResistanceFactors <- list()
-# 
-# for(i in 1:NFACTORS){
-#   temp <- rnorm(nPatches,SURVCHANGE_NEXTPLAGUE,SD_SURVCHANGE_NEXTPLAGUE)
-#   temp <- ifelse(temp<0,0,temp)
-#   PlagueResistancePotentialRaster <- reclassify(patchIDRaster,rcl=cbind(c(1:nPatches),temp))
-#   # plot(PlagueResistancePotentialRaster)
-#   ResistanceFactors[[i]] <- PlagueResistancePotentialRaster   # now this represents something like allele frequency
-# } 
-# 
-# ResistanceFactors <- stack(ResistanceFactors)
-
-#######################
-# INITIALIZE PLAGUE SURVIVAL [deprecated]
-#######################
-
-# NextPlagueSurvRaster <- patchRaster*BASELINE_PLAGUESURV
-# plot(NextPlagueSurvRaster)
-
-#######################
-# INITIALIZE NORMAL SURVIVAL [deprecated?]
-#######################
-
-# NextNormalSurvRaster <- patchRaster*BASELINE_MEANSURV
-# plot(NextNormalSurvRaster)
-
-#######################
-# STRUCTURED SURVIVAL?  
-#######################
-
-#  NOTE: ultimately, each gene will have its own fitness cost?? [like it!]
-
-#######################
-# INITIALIZE ALLELE FREQUENCIES
+# INITIALIZE ALLELE FREQUENCIES / RESISTANCE FACTORS [keep for now- will be multiple genes in the model somehow]
 #######################
 # NOTE: Some regions are more likely to evolve faster because they have greater percentages of those genes that can confer resistance. 
 
-# temp <- rnorm(nPatches,SURVCHANGE_NEXTPLAGUE,SD_SURVCHANGE_NEXTPLAGUE)
-# temp <- ifelse(temp<0,0.01,temp)
-# PlagueResistancePotentialRaster <- reclassify(patchIDRaster,rcl=cbind(c(1:nPatches),temp))    # deprecate? change to initial frequency?
-# plot(PlagueResistancePotentialRaster)  # now this can be an allele frequency map
-
 InitFreqList <- list()
 
-for(i in 1:NGENES){
+UserParams$Genetics$INITFREQ
+
+i=1
+for(i in 1:UserParams$Genetics$NGENES){
   name <- sprintf("gene%s",i)
-  temp <- rnorm(nPatches,INITFREQ[1],INITFREQ_SD[1])
+  temp <- rnorm(nPatches,UserParams$Genetics$INITFREQ[1],UserParams$Genetics$INITFREQ_SD[1])
   temp <- ifelse(temp<0,0.01,temp)
   InitFreqList[[name]] <- reclassify(patchIDRaster,rcl=cbind(c(1:nPatches),temp))
 }
@@ -313,7 +145,58 @@ plot(InitFreqList)
 
 # TODO: account for multiple different ways of getting resistance
 # TODO: keep track of frequencies of each factor within the resistant and susceptible pools (so they can be enriched appropriately)
-resistfunc <- function(ngenes){      # this function assumes that all factors are needed for resistance                    
+# TODO: account for heterozygotes and homozygotes?? [in the future!]
+#        right now they are assumed to be all dominant!!
+# TODO: keep track of dominance!!
+
+
+
+
+    # this function takes gene frequencies and converts to "factor" frequencies...
+Gene2Factor <- function(UserParams, FreqList = InitFreqList){
+  newlist <- list()
+  gene=1
+  for(gene in 1:UserParams$Genetics$NGENES){
+    name = sprintf("gene%s",gene)
+    name2 = sprintf("factor%s",gene)
+    newlist[[name2]] =  FreqList[[name]]^2 * UserParams$Genetics$DOMINANCE[gene,1] +
+               (2*FreqList[[name]]*(1-FreqList[[name]])) * UserParams$Genetics$DOMINANCE[gene,2]
+  }
+  newlist <- stack(newlist)
+  return(newlist)
+}
+
+# this function takes gene frequencies and abundances and converts to resistant freqs and susceptible freqs...
+StrFreqFunc <- function(UserParams,DensRaster=InitDensRaster,ResistRaster=ResistRaster,FactorList=FactorList,FreqList = InitFreqList){
+  reslist <- list()
+  suslist <- list()
+  temp <- DensRaster*F
+  gene=1
+  PerHet <- ((2/FreqList)-2)/(((2/FreqList)-2)+1)    # percent heterozygotes for dominant factors in resistant pool
+  for(gene in 1:UserParams$Genetics$NGENES){
+    name = sprintf("gene%s",gene)
+    suslist[[name]] <- 2*DensRaster*FreqList[[name]]  # total resistance alleles in the population
+    reslist[[name]] <- reclassify(FreqList[[name]],rcl=c(-Inf,Inf,0))
+    
+                           # number of resistance alleles in the resistant pool for each gene
+    if(sum(UserParams$Genetics$DOMINANCE[gene,])==2){   # if fully dominant
+      reslist[[name]] <- reslist[[name]] + (2*ResistRaster) * (1-PerHet[[name]])  +
+                                           ResistRaster*PerHet[[name]]
+      suslist[[name]] <- suslist[[name]] - reslist[[name]]  # number of resistance alleles remaining in the susceptible population    
+    }else{
+      reslist[[name]] <- reslist[[name]] + (2*ResistRaster) * UserParams$Genetics$DOMINANCE[gene,1] +
+                                          (ResistRaster) * UserParams$Genetics$DOMINANCE[gene,2]
+      suslist[[name]] <- suslist[[name]] - reslist[[name]]  # number of resistance alleles remaining in the susceptible population
+    }  
+    reslist[[name]] <- reslist[[name]]/(2*ResistRaster)  # allele frequency in res pop
+    suslist[[name]] <- suslist[[name]]/(2*(DensRaster-ResistRaster))  # freq in sus pop
+  }
+  reslist <- stack(reslist)
+  suslist <- stack(suslist)
+  return(newlist)
+}
+
+resistfunc <- function(ngenes=UserParams$Genetics$NGENES){      # this function assumes that all factors are needed for resistance                    
   nargs <- ngenes
   arguments <- paste("X",c(1:nargs),sep="")
   arguments2 <- paste(arguments, collapse=",")
@@ -323,9 +206,14 @@ resistfunc <- function(ngenes){      # this function assumes that all factors ar
 }
 
 
+UserParams$Genetics$RESISTANCE_SCENARIOS
+
+
 IsResistant <- function(DensRaster=InitDensRaster,FreqList=InitFreqList,fungen=resistfunc){
-  temp <- overlay(FreqList,fun=fungen(NGENES)) #round(InitDensRaster*InitFreq[["gene1"]])   # freq of resist for each grid cell
+  FactorList <- Gene2Factor(UserParams,FreqList)
+  temp <- overlay(FactorList,fun=fungen(UserParams$Genetics$NGENES)) #round(InitDensRaster*InitFreq[["gene1"]])   # freq of resist for each grid cell
   ResistRaster <- overlay(DensRaster,temp,fun=function(x,y) x*y)      # numbers of resistant individuals in each grid cell
+  StrFreqRaster <- overlay(DensRaster,FreqList,fun=StrFreqFunc) 
   return(ResistRaster)
 }
 

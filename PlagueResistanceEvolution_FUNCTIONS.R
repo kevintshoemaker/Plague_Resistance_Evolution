@@ -6,6 +6,169 @@
 ########################
 
 
+###########
+## USER DEFINED PARAMETERS
+###########
+
+
+DefineUserParams <- function(){
+    
+  ############
+  ## GLOBAL VARIABLES: DEFINE RANGE OF POSSIBLE SCENARIOS  [not implemented yet]
+  ############
+  
+  # Bg : "background"  - for looking at intermittent selection...
+  
+  # BgDiseaseSpatialExtents <- c("gridcell","subpatch","patch","regional","landscape")   
+  # BgDiseaseFrequencies <- c(1,2,3,5,10,20,30,40,50)
+  
+  # ProbTransmissions <- seq(0,1,by=0.1)   # for now, no transmission
+  
+  
+  UserParams <- list()
+  
+  #########
+  # defining the landscape
+  
+  
+  UserParams[["Landscape"]] <- list()
+  
+  # define the gridded landscape
+  UserParams[["Landscape"]]$NROWS <- 50
+  UserParams[["Landscape"]]$NCOLS <- 50
+  
+  UserParams[["Landscape"]]$CELLAREA_HA <- 1     # in hectares
+  UserParams[["Landscape"]]$CELLAREA_M2 <- UserParams[["Landscape"]]$CELLAREA_HA*10000   # in square meters
+  
+  UserParams[["Landscape"]]$CELLWIDTH_M <- sqrt(UserParams[["Landscape"]]$CELLAREA_M2)    # in meters
+  UserParams[["Landscape"]]$HALFCELLWIDTH_M <- UserParams[["Landscape"]]$CELLWIDTH_M/2
+  
+  
+  # define the percent of the landscape that is suitable
+  UserParams[["Landscape"]]$PER_SUITABLE <- 0.4
+  
+  #########
+  # defining the species biology:
+  
+  UserParams[["Dispersal"]] <- list()
+  
+  # dispersal params
+  
+  # define the clustering (degree to which species prefers to establish residence near members of its own kind)
+  # 1 is complete tendency to cluster in space. 0 is agnostic to members of its own kind. -1 is tendency to avoid members of its own kind
+  UserParams[["Dispersal"]]$SNUGGLE <- 0.75
+  
+  # maximum annual dispersal distance (m)  
+  UserParams[["Dispersal"]]$MAXDISPERSAL_M <- 500
+  
+  # number of colony foci to establish (within the dispersal range) after colonies get below the low-density threshold
+  UserParams[["Dispersal"]]$NFOCI <- 1
+  
+  # rate of transmission (per-disperser probability of initiating an outbreak in recipient population) (under optimal plague conditions?)
+  #UserParams[["Dispersal"]]$PROB_TRANSMISSION <- 0  # [not implemented yet...] [maybe don't need...] [but critical if looking at tradeoffs]
+  
+  # dispersal rate (independent of density)
+  UserParams[["Dispersal"]]$BASELINE_DISPERSAL <- 0.05
+  
+  # dispersal distance (m) for plagued-out populations
+  UserParams[["Dispersal"]]$MAXDISPERSAL_PLAGUE <- 1000   # individuals from plagued-out populations might move farther than normal population
+  
+  # dispersal rate for plagued-out populations
+  UserParams[["Dispersal"]]$PLAGUE_DISPERSAL <- 0.95     # individuals from plagued-out populations might have a higher tendency to move than normal populations- this can affect the spread of plague and the spread of plague resistance genes... 
+  
+  
+  
+  
+  UserParams[["Popbio"]] <- list()
+  
+  # define the maximum per-cell number of individuals
+  UserParams[["Popbio"]]$MAXDENS_HA <- 100
+  UserParams[["Popbio"]]$MAXABUND <- UserParams[["Popbio"]]$MAXDENS_HA *UserParams[["Landscape"]]$CELLAREA_HA
+  
+  # define the minimum per-cell number of individuals (provide a simple hard Allee effect)
+  UserParams[["Popbio"]]$MINDENS_HA <- 15
+  UserParams[["Popbio"]]$MINABUND <- UserParams[["Popbio"]]$MINDENS_HA*UserParams[["Landscape"]]$CELLAREA_HA
+  
+  # maximum survival under plague (limit to resistance)
+  #   RESISTANCE_LIMIT <- 0.75   # deprecated  
+  
+  # baseline survival in a non_plague year (baseline survival for a naive population under no plague)
+  UserParams[["Popbio"]]$BASELINE_MEANSURV <- 0.6
+  
+  # Variation in survival among years, expressed as CV
+  UserParams[["Popbio"]]$CV_SURVIVAL <- 0.2 
+  
+  # minimum survival under plague (completely naive population)
+  UserParams[["Popbio"]]$BASELINE_PLAGUESURV <- 0.05
+  
+  # survival under plague for resistant individuals
+  UserParams[["Popbio"]]$BASELINE_PLAGUESURV_RESIST <- 0.5
+  
+  # minimum survival for non-plague populations
+  UserParams[["Popbio"]]$SURVMIN_NOPLAGUE <- 0.1
+  
+  # maximum survival for non-plague populations
+  UserParams[["Popbio"]]$SURVMAX_NOPLAGUE <- 0.9
+  
+  # minimum survival for plague populations
+  UserParams[["Popbio"]]$SURVMIN_PLAGUE <- 0.01
+  
+  # maximum survival for plague populations (circumscribing env stochasticity at the population)
+  UserParams[["Popbio"]]$SURVMAX_PLAGUE <- 0.75
+  
+  
+  # fecundity in a non-plague year (baseline, number of offspring per adult, not sex structured)
+  UserParams[["Popbio"]]$BASELINE_MEANFEC <- 3.2
+  
+  # temporal variation in fecundity, expressed as a CV
+  UserParams[["Popbio"]]$CV_FECUNDITY <- 0.5 
+  
+  
+  
+  # mean change in the ability to withstand plague among the survivor population. (accounts for limited heritability)
+  #SURVCHANGE_NEXTPLAGUE <- 0.05  # deprecated
+  
+  # variation in the ability to survival plague among survivors, expressed as a SD [variation in standing genetic propensity to evolve resistance]
+  #SD_SURVCHANGE_NEXTPLAGUE <- 0.05    # deprecated
+  
+  # plague survival rate as a function of the resistance factors?? [TODO] 
+  
+  # change in the ability to survive in a non-plague year, as a percentage of the fitness benefit in a plague year (fitness costs to resistance)
+  #FITNESS_COST <- 0.1    # now means the degree to which survival is reduced for resistant individuals in nonplague years
+  
+  #########
+  # defining the species genetics:
+  
+  UserParams[["Genetics"]] <- list()
+  
+  UserParams[["Genetics"]]$NGENES <- 2
+  
+  UserParams[["Genetics"]]$NWAYS_OF_GETTING <- 1   # ways of getting resistance
+  UserParams[["Genetics"]]$RESISTANCE_SCENARIOS <- list()
+  UserParams[["Genetics"]]$RESISTANCE_SCENARIOS[[1]] <- c("factor1","factor2")   # for now, needs both factors! 
+  names(UserParams[["Genetics"]]$RESISTANCE_SCENARIOS[[1]]) <- c("AND","AND")   # names follow boolean conventions. In this case, both factors are required for resistance
+  
+  UserParams[["Genetics"]]$FITNESS_COST <- numeric(UserParams[["Genetics"]]$NGENES)
+  
+  UserParams[["Genetics"]]$FITNESS_COST[1] <- 0.1     # fitness cost of the first gene
+  UserParams[["Genetics"]]$FITNESS_COST[1] <- 0.05     # fitness cost of the second gene
+  
+  UserParams[["Genetics"]]$INITFREQ <- numeric(UserParams[["Genetics"]]$NGENES)
+  UserParams[["Genetics"]]$INITFREQ[1] <- 0.09
+  UserParams[["Genetics"]]$INITFREQ[2] <- 0.1
+  
+  UserParams[["Genetics"]]$INITFREQ_SD <- 0.03     # degree of variation in initial frequency of resistance.
+  
+  temp <- matrix(0,nrow=UserParams[["Genetics"]]$NGENES,ncol=3)
+  colnames(temp) <- c("2x(rr)","1x(rs)","0x(ss)")
+  UserParams[["Genetics"]]$DOMINANCE <- temp
+  UserParams[["Genetics"]]$DOMINANCE[1,] <- c(1,1,0)   # dominant
+  UserParams[["Genetics"]]$DOMINANCE[2,] <- c(1,0,0)  # recessive
+  
+  return(UserParams)
+}
+
+
 ############
 ## DO PLAGUE (determine which populations currently have plague given statistical model)
 ############
@@ -70,24 +233,25 @@ GetPlagueModel <- function(){
 ## INITIALIZE DISPERSAL STRUCTURES
 ############
 
-InitializeDispersal <- function(){
-  MAXDISPERSAL_CELLS <<- floor(MAXDISPERSAL/CELLWIDTH)
-  MAXDISPERSAL_CELLS_PLAGUE <<- floor(MAXDISPERSAL_PLAGUE/CELLWIDTH)
-  MAXDISPERSAL <<- MAXDISPERSAL_CELLS*CELLWIDTH
-  MAXDISPERSAL_PLAGUE <<- MAXDISPERSAL_CELLS_PLAGUE*CELLWIDTH
+InitializeDispersal <- function(UserParams){
+  
+  UserParams$Dispersal$MAXDISPERSAL_CELLS <- floor(UserParams$Dispersal$MAXDISPERSAL_M/UserParams$Landscape$CELLWIDTH_M)
+  UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE <- floor(UserParams$Dispersal$MAXDISPERSAL_PLAGUE/UserParams$Landscape$CELLWIDTH_M)
+  UserParams$Dispersal$MAXDISPERSAL_M <- UserParams$Dispersal$MAXDISPERSAL_CELLS*UserParams$Landscape$CELLWIDTH_M
+  UserParams$Dispersal$MAXDISPERSAL_PLAGUE <- UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE*UserParams$Landscape$CELLWIDTH_M
   
   DispMask <<- list()
   DispKernel <<- list()
   i="noPlague"
   for(i in c("noPlague","plague")){
-    if(i=="noPlague"){ maxdispcells = MAXDISPERSAL_CELLS ; maxdisp = MAXDISPERSAL} 
-    if(i=="plague") {maxdispcells = MAXDISPERSAL_CELLS_PLAGUE ; maxdisp = MAXDISPERSAL_PLAGUE}
+    if(i=="noPlague"){ maxdispcells = UserParams$Dispersal$MAXDISPERSAL_CELLS ; maxdisp = UserParams$Dispersal$MAXDISPERSAL_M} 
+    if(i=="plague") {maxdispcells = UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE ; maxdisp = UserParams$Dispersal$MAXDISPERSAL_PLAGUE}
     tempDispMask <- matrix(1,nrow=((maxdispcells*2)+1),ncol=((maxdispcells*2)+1))     # dispersal mask defines where it is possible to go...
     #DispMask_Plague <- matrix(1,nrow=((MAXDISPERSAL_CELLS_PLAGUE*2)+1),ncol=((MAXDISPERSAL_CELLS_PLAGUE*2)+1))     # dispersal mask defines where it is possible to go...
     
     # exclude values greater than the max dispersal distance from the dispersal kernel 
-    xs <- seq(HALFCELLWIDTH,maxdisp*2+HALFCELLWIDTH,by=CELLWIDTH)
-    ys <- seq(HALFCELLWIDTH,maxdisp*2+HALFCELLWIDTH,by=CELLWIDTH)
+    xs <- seq(UserParams$Landscape$HALFCELLWIDTH_M,maxdisp*2+UserParams$Landscape$HALFCELLWIDTH_M,by=UserParams$Landscape$CELLWIDTH_M)
+    ys <- seq(UserParams$Landscape$HALFCELLWIDTH_M,maxdisp*2+UserParams$Landscape$HALFCELLWIDTH_M,by=UserParams$Landscape$CELLWIDTH_M)
     
     focalcell <- ((length(xs)-1)/2)+1
     focalx <- xs[focalcell]
@@ -109,9 +273,10 @@ InitializeDispersal <- function(){
   # set up structures for colony expansion- individuals move to neighboring cells first..   [note: for now, donuts obey only the non-plague max dispersal]
   
   donuts <<- list()
+  j="noPlague"
   for(j in c("noPlague","plague")){
-    if(j=="noPlague"){ maxdispcells = MAXDISPERSAL_CELLS ; maxdisp = MAXDISPERSAL} 
-    if(j=="plague") {maxdispcells = MAXDISPERSAL_CELLS_PLAGUE ; maxdisp = MAXDISPERSAL_PLAGUE}
+    if(j=="noPlague"){ maxdispcells = UserParams$Dispersal$MAXDISPERSAL_CELLS ; maxdisp = UserParams$Dispersal$MAXDISPERSAL_M} 
+    if(j=="plague") {maxdispcells = UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE ; maxdisp = UserParams$Dispersal$MAXDISPERSAL_PLAGUE}
     donuts[[j]] <<- list()
     donut_template <- matrix(0,nrow=((maxdispcells*2)+1),ncol=((maxdispcells*2)+1),byrow=T)
     newseq <- c(-maxdispcells:maxdispcells)
@@ -132,6 +297,8 @@ InitializeDispersal <- function(){
   
   donuts[[j]] <<- lapply(donuts[[j]],function(k) apply(k,c(1,2),function(t) ifelse(t==0,NA,t)))
   
+  UserParams <<- UserParams   # save to global environment
+  
   # donuts[['noPlague']][[4]]
 }
 
@@ -144,7 +311,9 @@ InitializeDispersal <- function(){
 #?raster
 
 InitializeLandscape <- function(solid=F){
-  templateRaster <- raster(nrows=NROWS, ncols=NCOLS, xmn=0, xmx=CELLWIDTH*NROWS,ymn=0, ymx=CELLWIDTH*NCOLS,vals=NA)    # template raster
+  templateRaster <- raster(nrows=UserParams$Landscape$NROWS, ncols=UserParams$Landscape$NCOLS, xmn=0, 
+                            xmx=UserParams$Landscape$CELLWIDTH_M*UserParams$Landscape$NROWS,ymn=0, 
+                            ymx=UserParams$Landscape$CELLWIDTH_M*UserParams$Landscape$NCOLS,vals=NA)    # template raster
   # plot(templateRaster)
   
   if(solid){
@@ -152,18 +321,19 @@ InitializeLandscape <- function(solid=F){
   }else{
   
   # use utility function from secr package to initialize landscape... 
-    tempgrid <- make.grid(nx = NCOLS, ny = NROWS, spacing = CELLWIDTH,
+    tempgrid <- make.grid(nx = UserParams$Landscape$NCOLS, ny = UserParams$Landscape$NROWS, spacing = UserParams$Landscape$CELLWIDTH_M,
                           detector = "single", originxy = c(0,0), hollow = F,
                           ID = "alphay")
     
     # plot(tempgrid)  
     
-    tempmask <- make.mask(traps=tempgrid, buffer = HALFCELLWIDTH, spacing = CELLWIDTH, nx = NCOLS, ny = NROWS, type =
+    tempmask <- make.mask(traps=tempgrid, buffer = UserParams$Landscape$HALFCELLWIDTH_M, spacing = UserParams$Landscape$CELLWIDTH_M, 
+                          nx = UserParams$Landscape$NCOLS, ny = UserParams$Landscape$NROWS, type =
                             c("traprect"))
     
     # plot(tempmask)
     
-    temppatches <- randomHabitat(mask=tempmask, p = 0.4, A = PER_SUITABLE, directions = 4, minpatch = 20,
+    temppatches <- randomHabitat(mask=tempmask, p = 0.4, A = UserParams$Landscape$PER_SUITABLE, directions = 4, minpatch = 20,
                                  drop = FALSE, covname = "habitat", plt = FALSE)
     
     #patchRaster <- templateRaster
@@ -174,12 +344,12 @@ InitializeLandscape <- function(solid=F){
     # plot(patchRaster) 
   }
   # extend patch raster to go outside the landscape bounds to the max dispersal distance...
-  maxdisp <- max(MAXDISPERSAL_CELLS,MAXDISPERSAL_CELLS_PLAGUE)
+  maxdisp <- max(UserParams$Dispersal$MAXDISPERSAL_CELLS,UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE)
   patchRaster <<- extend(patchRaster,maxdisp,value=NA)
   
   #patchMatrix <- as.matrix(newraster)    # matrix of habitat patches
   
-  KRaster <<- patchRaster * MAXDENS     # matrix of carrying capacity
+  KRaster <<- patchRaster * UserParams$Popbio$MAXDENS_HA     # matrix of carrying capacity
   # plot(KRaster)
   
   patchIDRaster <<- clump(patchRaster,directions=4,gaps=F)   # determine unique ID for each patch... 
@@ -198,12 +368,13 @@ InitializeLandscape <- function(solid=F){
   # head(xy_df)
   
   # extent- in terms of cell centroids... (used for dispersal)
-  MINX <<- patchRaster@extent@xmin+HALFCELLWIDTH
-  MAXX <<- patchRaster@extent@xmax-HALFCELLWIDTH
-  MINY <<- patchRaster@extent@ymin+HALFCELLWIDTH
-  MAXY <<- patchRaster@extent@ymax-HALFCELLWIDTH
+  UserParams$Landscape$MINX <- patchRaster@extent@xmin+UserParams$Landscape$HALFCELLWIDTH_M
+  UserParams$Landscape$MAXX <- patchRaster@extent@xmax-UserParams$Landscape$HALFCELLWIDTH_M
+  UserParams$Landscape$MINY <- patchRaster@extent@ymin+UserParams$Landscape$HALFCELLWIDTH_M
+  UserParams$Landscape$MAXY <- patchRaster@extent@ymax-UserParams$Landscape$HALFCELLWIDTH_M
   
-  FULLEXTENT <<- extent(MINX,MAXX,MINY,MAXY)
+  UserParams$Landscape$FULLEXTENT <- extent(UserParams$Landscape$MINX,UserParams$Landscape$MAXX,UserParams$Landscape$MINY,UserParams$Landscape$MAXY)
+  UserParams <<- UserParams  # save to global env
 }
 
 
