@@ -33,8 +33,8 @@ NYEARS <- 20
 ## SET BASE DIRECTORY
 ############
 
-KEVIN_LAPTOP <- FALSE #   TRUE # 
-KEVIN_OFFICEPC <- TRUE # FALSE # 
+KEVIN_LAPTOP <- TRUE # FALSE #   
+KEVIN_OFFICEPC <- FALSE # TRUE # 
 
 if(KEVIN_LAPTOP) BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
 if(KEVIN_OFFICEPC) BASE_DIR <- "E:\\Dropbox\\PlagueModeling\\ResistanceEvolution"
@@ -167,10 +167,10 @@ Gene2Factor <- function(UserParams, FreqList = InitFreqList){
 }
 
 # this function takes gene frequencies and abundances and converts to resistant freqs and susceptible freqs...
-StrFreqFunc <- function(UserParams,DensRaster=InitDensRaster,ResistRaster=ResistRaster,FactorList=FactorList,FreqList = InitFreqList){
+StrFreqFunc <- function(UserParams,DensRaster=InitDensRaster,ResistRaster=ResistRaster,FreqList = InitFreqList){
   reslist <- list()
   suslist <- list()
-  temp <- DensRaster*F
+  #  temp <- DensRaster*F
   gene=1
   PerHet <- ((2/FreqList)-2)/(((2/FreqList)-2)+1)    # percent heterozygotes for dominant factors in resistant pool
   for(gene in 1:UserParams$Genetics$NGENES){
@@ -193,7 +193,8 @@ StrFreqFunc <- function(UserParams,DensRaster=InitDensRaster,ResistRaster=Resist
   }
   reslist <- stack(reslist)
   suslist <- stack(suslist)
-  return(newlist)
+  assign(x="reslist",value=reslist, envir = .GlobalEnv)   # assign the variable to the global environment
+  assign(x="suslist",value=suslist, envir = .GlobalEnv)   # assign the variable to the global environment
 }
 
 resistfunc <- function(ngenes=UserParams$Genetics$NGENES){      # this function assumes that all factors are needed for resistance                    
@@ -206,14 +207,14 @@ resistfunc <- function(ngenes=UserParams$Genetics$NGENES){      # this function 
 }
 
 
-UserParams$Genetics$RESISTANCE_SCENARIOS
+UserParams$Genetics$RESISTANCE_SCENARIOS[[1]]
 
 
 IsResistant <- function(DensRaster=InitDensRaster,FreqList=InitFreqList,fungen=resistfunc){
   FactorList <- Gene2Factor(UserParams,FreqList)
   temp <- overlay(FactorList,fun=fungen(UserParams$Genetics$NGENES)) #round(InitDensRaster*InitFreq[["gene1"]])   # freq of resist for each grid cell
   ResistRaster <- overlay(DensRaster,temp,fun=function(x,y) x*y)      # numbers of resistant individuals in each grid cell
-  StrFreqRaster <- overlay(DensRaster,FreqList,fun=StrFreqFunc) 
+  StrFreqFunc(UserParams,DensRaster,ResistRaster,FreqList) # returns "suslist" and "reslist"
   return(ResistRaster)
 }
 
@@ -253,14 +254,6 @@ InitDensRaster <- InitDensRaster2
 #PopArray2 <- InitDensRaster   # copy, for dispersal algorithm... 
 
 
-GetStructuredPop <- function(DensRaster=InitDensRaster,FreqList=InitFreqList){
-  Pop <- list()
-  Pop[["resistant"]] <- IsResistant(DensRaster,FreqList)      # structure by susceptible and resistant. 
-  Pop[["susceptible"]] <- DensRaster - Pop[["resistant"]]
-  Pop <- stack(Pop)
-  return(Pop)
-}
-
         # use information on frequencies of resistance factors to struture population into resistance categories
 GetStructuredPop <- function(DensRaster=InitDensRaster,FreqList=InitFreqList){
   Pop <- list()
@@ -276,15 +269,6 @@ PopArray <- GetStructuredPop(InitDensRaster)
 plot(PopArray)
   
 
-# keep track of resistance frequencies in each 
-GetStructuredPop <- function(DensRaster=InitDensRaster,FreqList=InitFreqList){
-  Freq <- list()
-  Freq[["resistant"]] <- IsResistant(DensRaster,FreqList)      # structure by susceptible and resistant. 
-  Pop[["susceptible"]] <- DensRaster - Pop[["resistant"]]
-  Pop <- stack(Pop)
-  return(Pop)
-}
-
 ######################
 # INITIALIZE PLAGUE PROCESS   [KTS: moving away from this and towards a statistical model]
 ######################
@@ -298,14 +282,14 @@ GetStructuredPop <- function(DensRaster=InitDensRaster,FreqList=InitFreqList){
 
 PlagueRaster_template <- reclassify(patchIDRaster,rcl=c(-Inf,Inf,0))   
 
-PlagueRaster <- doPlague(PlagueRaster=PlagueRaster_template, PopArray=reclassify(patchIDRaster,rcl=c(-Inf,Inf,0)))
+PlagueRaster <- doPlague(UserParams,PlagueRaster=PlagueRaster_template, PopArray=reclassify(patchIDRaster,rcl=c(-Inf,Inf,0)))
 
 
 plot(PlagueRaster)
 
 
 ####################
-# INITIALIZE SURVIVAL
+# INITIALIZE SURVIVAL  (deprecate?)
 ####################
 
 meansurv <- matrix(0,nrow=2,ncol=2)    # survival matrix (mean)

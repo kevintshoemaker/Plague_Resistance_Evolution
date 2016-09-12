@@ -173,9 +173,9 @@ DefineUserParams <- function(){
 ## DO PLAGUE (determine which populations currently have plague given statistical model)
 ############
 
-doPlague <- function(PlagueRaster=PlagueRaster,PopArray=PopArray){ 
+doPlague <- function(UserParams,PlagueRaster=PlagueRaster,PopArray=PopArray){ 
   
-  nPlagueNeighbors <- focal(PlagueRaster, w=matrix(1, nc=MAXDISPERSAL_CELLS, nr=MAXDISPERSAL_CELLS),na.rm=T)
+  nPlagueNeighbors <- focal(PlagueRaster, w=matrix(1, nc=UserParams$Dispersal$MAXDISPERSAL_CELLS, nr=UserParams$Dispersal$MAXDISPERSAL_CELLS),na.rm=T)
   
   # plot(PlagueRaster)
   # plot(nPlagueNeighbors)
