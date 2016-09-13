@@ -33,8 +33,8 @@ NYEARS <- 20
 ## SET BASE DIRECTORY
 ############
 
-KEVIN_LAPTOP <- TRUE # FALSE #   
-KEVIN_OFFICEPC <- FALSE # TRUE # 
+KEVIN_LAPTOP <- FALSE #  TRUE #  
+KEVIN_OFFICEPC <- TRUE # FALSE # 
 
 if(KEVIN_LAPTOP) BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
 if(KEVIN_OFFICEPC) BASE_DIR <- "E:\\Dropbox\\PlagueModeling\\ResistanceEvolution"
@@ -152,93 +152,6 @@ plot(InitFreqList)
 
 
 
-    # this function takes gene frequencies and converts to "factor" frequencies...
-Gene2Factor <- function(UserParams, FreqList = InitFreqList){
-  newlist <- list()
-  gene=1
-  for(gene in 1:UserParams$Genetics$NGENES){
-    name = sprintf("gene%s",gene)
-    name2 = sprintf("factor%s",gene)
-    newlist[[name2]] =  FreqList[[name]]^2 * UserParams$Genetics$DOMINANCE[gene,1] +
-               (2*FreqList[[name]]*(1-FreqList[[name]])) * UserParams$Genetics$DOMINANCE[gene,2]
-  }
-  newlist <- stack(newlist)
-  return(newlist)
-}
-
-# this function takes gene frequencies and abundances and converts to resistant freqs and susceptible freqs...
-StrFreqFunc <- function(UserParams,DensRaster=InitDensRaster,ResistRaster=ResistRaster,FreqList = InitFreqList){
-  reslist <- list()
-  suslist <- list()
-  #  temp <- DensRaster*F
-  gene=1
-  PerHet <- ((2/FreqList)-2)/(((2/FreqList)-2)+1)    # percent heterozygotes for dominant factors in resistant pool
-  for(gene in 1:UserParams$Genetics$NGENES){
-    name = sprintf("gene%s",gene)
-    suslist[[name]] <- 2*DensRaster*FreqList[[name]]  # total resistance alleles in the population
-    reslist[[name]] <- reclassify(FreqList[[name]],rcl=c(-Inf,Inf,0))
-    
-                           # number of resistance alleles in the resistant pool for each gene
-    if(sum(UserParams$Genetics$DOMINANCE[gene,])==2){   # if fully dominant
-      reslist[[name]] <- reslist[[name]] + (2*ResistRaster) * (1-PerHet[[name]])  +
-                                           ResistRaster*PerHet[[name]]
-      suslist[[name]] <- suslist[[name]] - reslist[[name]]  # number of resistance alleles remaining in the susceptible population    
-    }else{
-      reslist[[name]] <- reslist[[name]] + (2*ResistRaster) * UserParams$Genetics$DOMINANCE[gene,1] +
-                                          (ResistRaster) * UserParams$Genetics$DOMINANCE[gene,2]
-      suslist[[name]] <- suslist[[name]] - reslist[[name]]  # number of resistance alleles remaining in the susceptible population
-    }  
-    reslist[[name]] <- reslist[[name]]/(2*ResistRaster)  # allele frequency in res pop
-    suslist[[name]] <- suslist[[name]]/(2*(DensRaster-ResistRaster))  # freq in sus pop
-  }
-  reslist <- stack(reslist)
-  suslist <- stack(suslist)
-  assign(x="reslist",value=reslist, envir = .GlobalEnv)   # assign the variable to the global environment
-  assign(x="suslist",value=suslist, envir = .GlobalEnv)   # assign the variable to the global environment
-}
-
-resistfunc <- function(ngenes=UserParams$Genetics$NGENES){      # this function assumes that all factors are needed for resistance                    
-  nargs <- ngenes
-  arguments <- paste("X",c(1:nargs),sep="")
-  arguments2 <- paste(arguments, collapse=",")
-  arguments3 <- paste(arguments, collapse="*")
-  expression <- sprintf("function(%s) %s ",arguments2,arguments3)
-  eval(parse(text=expression))
-}
-
-
-UserParams$Genetics$RESISTANCE_SCENARIOS[[1]]
-
-
-IsResistant <- function(DensRaster=InitDensRaster,FreqList=InitFreqList,fungen=resistfunc){
-  FactorList <- Gene2Factor(UserParams,FreqList)
-  temp <- overlay(FactorList,fun=fungen(UserParams$Genetics$NGENES)) #round(InitDensRaster*InitFreq[["gene1"]])   # freq of resist for each grid cell
-  ResistRaster <- overlay(DensRaster,temp,fun=function(x,y) x*y)      # numbers of resistant individuals in each grid cell
-  StrFreqFunc(UserParams,DensRaster,ResistRaster,FreqList) # returns "suslist" and "reslist"
-  return(ResistRaster)
-}
-
-    # use a closure    
-FCfunc <- function(ngenes){   # assume that fitness costs are simply additive
-  nargs <- ngenes
-  arguments <- paste("X",c(1:nargs),sep="")
-  arguments2 <- paste(arguments, collapse=",")
-  arguments3 <- paste(paste("FITNESS_COST[",c(1:ngenes),"]*",arguments,sep=""),collapse="+")
-  
-      #FITNESS_COST[1]*X1 + FITNESS_COST[2]*X2 
-  expression <- sprintf("function(%s) %s ",arguments2,arguments3)
-  eval(parse(text=expression))
-}
-
-FitnessCost <- function(FreqList=InitFreqList){
-  FCraster <- overlay(FreqList,fun=FCfunc(NGENES))  # degree of fitness cost
-  return(FCraster)
-}
-
-
-   # function for computing the allele (factor) frequecies for the structured population (resistant and susceptible...)
-
-
 
 #####################
 # INITIALIZE POPULATION
@@ -252,16 +165,6 @@ ndx <- sample(which(!is.na(InitDensRaster2@data@values)),size=3)
 InitDensRaster2[ndx] <- 1000   # initialize population in random locations
 InitDensRaster <- InitDensRaster2
 #PopArray2 <- InitDensRaster   # copy, for dispersal algorithm... 
-
-
-        # use information on frequencies of resistance factors to struture population into resistance categories
-GetStructuredPop <- function(DensRaster=InitDensRaster,FreqList=InitFreqList){
-  Pop <- list()
-  Pop[["resistant"]] <- IsResistant(DensRaster,FreqList)      # structure by susceptible and resistant. 
-  Pop[["susceptible"]] <- DensRaster - Pop[["resistant"]]
-  Pop <- stack(Pop)
-  return(Pop)
-}
 
 
 PopArray <- GetStructuredPop(InitDensRaster)
@@ -288,18 +191,6 @@ PlagueRaster <- doPlague(UserParams,PlagueRaster=PlagueRaster_template, PopArray
 plot(PlagueRaster)
 
 
-####################
-# INITIALIZE SURVIVAL  (deprecate?)
-####################
-
-meansurv <- matrix(0,nrow=2,ncol=2)    # survival matrix (mean)
-rownames(meansurv) <- c("resistant","susceptible")
-colnames(meansurv) <- c("plague","noPlague")
-meansurv["resistant","noPlague"] <- getSurvival("resistant","noPlague")
-meansurv["resistant","plague"] <-   getSurvival("resistant","plague")
-meansurv["susceptible","plague"] <- getSurvival("susceptible","plague")
-meansurv["susceptible","noPlague"] <- getSurvival("susceptible","noPlague")
-meansurv
 
 ####################
 # START LOOP THROUGH YEARS
@@ -307,44 +198,33 @@ meansurv
 
 
     # names of important raster maps to save to file etc...
-rasterNames  <- c("PopArray","NextPlagueSurvRaster","NextNormalSurvRaster","PlagueResistancePotentialRaster")   # Deprecate?
+#rasterNames  <- c("PopArray","NextPlagueSurvRaster","NextNormalSurvRaster","PlagueResistancePotentialRaster")   # Deprecate?
+
+
+DensRaster <- InitDensRaster
   
 # t=which(plagueyear)[1]
 t=0
-
 t=t+1
 for(t in 1:(NYEARS)){
   deviate <- rnorm(1)   #determine if this is a good year or a bad year (for now, survival and fecundity are perfectly correlated)
-  cv=CV_SURVIVAL   # set up for using the getYearVariate function
+  cv=UserParams$Popbio$CV_SURVIVAL   # set up for using the getYearVariate function
   
-#   ###################
-#   # EXTERNAL PLAGUE PRESSURE
-#   ###################
-#   if(plagueyear[t]){
-#     PlagueRaster <- PlagueRaster_template
-#     PlagueRaster[patchIDRaster==plagueNow[t]] <- 1
-#     plot(PlagueRaster)
-#   }else{
-#     PlagueRaster <- PlagueRaster_template
-#   }
-  
-
   ##################
   # DENSITY INDEPENDENT SURVIVAL (including plague survival)
   ##################
   
-  PopArray <- doSurvival(PopArray=PopArray,PlagueRaster=PlagueRaster)
-  # plot(PopArray)
-#   plot(NextPlagueSurvRaster)
-#   plot(NextNormalSurvRaster)
-# plot(PlagueResistancePotentialRaster)
+  #PopArray <- GetStructuredPop(DensRaster)
+  
+  DensRaster <- doSurvival(UserParams,DensRaster,PlagueRaster=PlagueRaster,FreqList)
+  # plot(DensRaster)
   
   ################
   # REPRODUCTION
   ################
   
-  PopArray <- doReproduce(PlagueRaster = PlagueRaster)
-  # plot(PopArray)
+  DensRaster <- doReproduce(UserParams,DensRaster,PlagueRaster = PlagueRaster)    # TODO: make specific to each resistance type...?
+  # plot(DensRaster)
   
   
   ###############
@@ -611,6 +491,29 @@ for(t in 1:(NYEARS)){
 
 
 
+########## DEPRECATED CODE
 
+#   ###################
+#   # EXTERNAL PLAGUE PRESSURE
+#   ###################
+#   if(plagueyear[t]){
+#     PlagueRaster <- PlagueRaster_template
+#     PlagueRaster[patchIDRaster==plagueNow[t]] <- 1
+#     plot(PlagueRaster)
+#   }else{
+#     PlagueRaster <- PlagueRaster_template
+#   }
 
+# ####################
+# # INITIALIZE SURVIVAL  (deprecate?)
+# ####################
+# 
+# meansurv <- matrix(0,nrow=2,ncol=2)    # survival matrix (mean)
+# rownames(meansurv) <- c("resistant","susceptible")
+# colnames(meansurv) <- c("plague","noPlague")
+# meansurv["resistant","noPlague"] <- getSurvival("resistant","noPlague")
+# meansurv["resistant","plague"] <-   getSurvival("resistant","plague")
+# meansurv["susceptible","plague"] <- getSurvival("susceptible","plague")
+# meansurv["susceptible","noPlague"] <- getSurvival("susceptible","noPlague")
+# meansurv
 

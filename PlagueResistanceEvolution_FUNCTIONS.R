@@ -881,17 +881,17 @@ demographicStoch <- function(c){
   return(value)
 }
 
-doReproduce <- function(PlagueRaster=PlagueRaster){
-  thisPop <- PopArray
+doReproduce <- function(UserParams,DensRaster,PlagueRaster=PlagueRaster){
+  thisPop <- DensRaster
   #thisFec <- rnorm(1,BASELINE_MEANFEC,CV_FECUNDITY*BASELINE_MEANFEC)
-  thisFec <- BASELINE_MEANFEC + (CV_FECUNDITY*BASELINE_MEANFEC)*deviate
+  thisFec <- UserParams$Popbio$BASELINE_MEANFEC + (UserParams$Popbio$CV_FECUNDITY*UserParams$Popbio$BASELINE_MEANFEC)*deviate
   thisFec <- max(0.1,thisFec)  # make sure fecundity is not zero
   #thisPop[(thisPop<MINABUND)] <- 0  # populations below the allee threshold cannot breed
-  thisPop[(PlagueRaster==0)&(thisPop>MINABUND)] <- thisPop[(PlagueRaster==0)&(thisPop>MINABUND)] + PopArray[(PlagueRaster==0)&(thisPop>MINABUND)]*thisFec
-  thisPop[(PlagueRaster==1)&(thisPop>MINABUND)] <- thisPop[(PlagueRaster==1)&(thisPop>MINABUND)] + (PopArray[(PlagueRaster==1)&(thisPop>MINABUND)]*thisFec)/2   # reduced fecundity under plague...
+  thisPop[(PlagueRaster==0)&(thisPop>UserParams$Popbio$MINABUND)] <- thisPop[(PlagueRaster==0)&(thisPop>UserParams$Popbio$MINABUND)] + DensRaster[(PlagueRaster==0)&(thisPop>UserParams$Popbio$MINABUND)]*thisFec
+  thisPop[(PlagueRaster==1)&(thisPop>UserParams$Popbio$MINABUND)] <- thisPop[(PlagueRaster==1)&(thisPop>UserParams$Popbio$MINABUND)] + (DensRaster[(PlagueRaster==1)&(thisPop>UserParams$Popbio$MINABUND)]*thisFec)/2   # reduced fecundity under plague...
   thisPop <- calc(thisPop,fun=demographicStoch)
   # plot(thisPop)
-  return(thisPop)
+  return(thisPop)   
 }
 
 ##################
@@ -923,89 +923,87 @@ getSurvival <- function(resistanceStatus="susceptible",plagueStatus="plague"){
   return(survival)
 }
 
-getSurvival_thisYear <- function(meansurv=meansurv,deviate=deviate,cv=cv){
-  surv <- meansurv + deviate*(surv*cv)
-  surv[,"plague"] <- min(SURVMAX_PLAGUE,max(SURVMIN_PLAGUE,surv["resistant","plague"]))
-  surv[,"noPlague"] <- min(SURVMAX_NOPLAGUE,max(SURVMIN_NOPLAGUE,surv["resistant","plague"]))  
+
+    # new "getsurvival" function returns a map
+getSurvivalFunc <- function(resistanceStatus="susceptible",plagueStatus="plague",FCRaster=FCRaster){
+    #survival=reclassify(patchRaster,rcl=c(-Inf,Inf,0))
+  if((plagueStatus=="noPlague")&(resistanceStatus=="susceptible")) survival = reclassify(patchRaster,rcl=c(-Inf,Inf,UserParams$Popbio$BASELINE_MEANSURV))
+  if((plagueStatus=="noPlague")&(resistanceStatus=="resistant")) survival = UserParams$Popbio$BASELINE_MEANSURV - FCRaster*(UserParams$Popbio$BASELINE_MEANSURV*UserParams$Popbio$BASELINE_PLAGUESURV_RESIST-UserParams$Popbio$SURVMIN_PLAGUE)
+  if((plagueStatus=="plague")&(resistanceStatus=="susceptible")) survival = survival=reclassify(patchRaster,rcl=c(-Inf,Inf,UserParams$Popbio$BASELINE_PLAGUESURV))
+  if((plagueStatus=="plague")&(resistanceStatus=="resistant")) survival = survival=reclassify(patchRaster,rcl=c(-Inf,Inf,UserParams$Popbio$BASELINE_MEANSURV*UserParams$Popbio$BASELINE_PLAGUESURV_RESIST))
+  return(survival)  
+}
+
+getMeanSurvival <- function(FCRaster=FCRaster){
+  meansurv <- list()
+  for(i in c("resistant","susceptible")){
+    meansurv[[i]] <-list()
+    for(j in c("plague","noPlague")){
+      meansurv[[i]][[j]] <- getSurvivalFunc(i,j,FCRaster)
+    }
+  }
+  return(meansurv)
+}
+
+getSurvival <- function(deviate=deviate,cv=cv,FCRaster=FCRaster){
+  surv <- getMeanSurvival(FCRaster)
+  
+  for(i in c("resistant","susceptible")){
+    for(j in c("plague","noPlague")){
+      surv[[i]][[j]] <- surv[[i]][[j]] + deviate*(surv[[i]][[j]]*cv)
+      if(j=="plague"){  
+        surv[[i]][[j]][surv[[i]][[j]]>UserParams$Popbio$SURVMAX_PLAGUE] <- UserParams$Popbio$SURVMAX_PLAGUE
+        surv[[i]][[j]][surv[[i]][[j]]<UserParams$Popbio$SURVMIN_PLAGUE] <- UserParams$Popbio$SURVMIN_PLAGUE
+      }
+      if(j=="noPlague"){
+        surv[[i]][[j]][surv[[i]][[j]]>UserParams$Popbio$SURVMAX_NOPLAGUE] <- UserParams$Popbio$SURVMAX_NOPLAGUE
+        surv[[i]][[j]][surv[[i]][[j]]<UserParams$Popbio$SURVMIN_NOPLAGUE] <- UserParams$Popbio$SURVMIN_NOPLAGUE
+      }
+    }
+  }
   return(surv)
 }
 
-
      # note: maybe we should just break out poparray by resistance during the survival function... Otherwise just frequencies... 
      #     in that case, we need to update frequencies here too. This is where "enrichment" happens.
-doSurvival <- function(DensRaster=InitDensRaster,PlagueRaster=PlagueRaster,Freqlist=FreqList){   # PopArray=PopArray
+doSurvival <- function(UserParams, DensRaster=InitDensRaster,PlagueRaster=PlagueRaster,Freqlist=FreqList){   # PopArray=PopArray
   #thisPop <- getValues(PopArray)
   
-  thisPop <- GetStructuredPop(DensRaster,FreqList)    # break out population into resistant and non-resistant
+  thisPop <- GetStructuredPop(DensRaster,FreqList)    # break out population into resistant and non-resistant (and account for resistance factors)
   
-  structuredFreq <- GetStructuredFreqList(DensRaster,FreqList)  # break out resistance factors into resistant and non-resistant 
+    # structuredFreq <- GetStructuredFreqList(DensRaster,FreqList)  # break out resistance factors into resistant and non-resistant 
   
   FCRaster <- FitnessCost(FreqList=InitFreqList)      # compute fitness costs
   
-  thisSurv <- overlay(PopArray,
+  surv <- getSurvival(deviate,cv,FCRaster)    # get survival for all possible combinations of resistance and plague
   
   
+  ###########
+  #  PERFORM SURVIVAL
+  ###########
   
-  
-  surv <- getSurvival_thisYear(meansurv,deviate,cv)
-  
+  status="resistant"
   for(status in c("resistant","susceptible")){
-    thisPop[[status]][PlagueRaster==1] <- thisPop[[status]][PlagueRaster==1]*surv[status,"plague"]
-    thisPop[[status]][PlagueRaster==0] <- thisPop[[status]][PlagueRaster==0]*surv[status,"noPlague"]
+    thisPop[[status]][PlagueRaster==1] <- thisPop[[status]][PlagueRaster==1]*surv[[status]][["plague"]][PlagueRaster==1]
+    thisPop[[status]][PlagueRaster==0] <- thisPop[[status]][PlagueRaster==0]*surv[[status]][["noPlague"]][PlagueRaster==0]
   }
   
-  # thisSurvRaster <- calc(NextNormalSurvRaster,fun=getYearVariate)     # first compute "normal" survival
-  # thisSurvRaster[PlagueRaster==1] <- NextPlagueSurvRaster[PlagueRaster==1]     #account for plague mortality
-  # 
-  # #plot(PopArray)
-  # #plot(thisSurvRaster)
-  # # plot(NextNormalSurvRaster)
-  # #if(plagueyear[t]){
-  # 
-  # thisPop <- thisPop*thisSurvRaster    # account for survival this year
-  # # plot(thisSurvRaster)
-  # # plot(thisPop)
-  # ###################
-  # # accout for change in fitness due to selection
-  #    #NextPlagueSurvRaster <- NextPlagueSurvRaster * thisPop
-  # NextPlagueSurvRaster[(PlagueRaster==1)&(thisPop>0)] <- NextPlagueSurvRaster[(PlagueRaster==1)&(thisPop>0)] + 
-  #   PlagueResistancePotentialRaster[(PlagueRaster==1)&(thisPop>0)]              # account for development of plague resistance during plague
-  # NextPlagueSurvRaster[NextPlagueSurvRaster>SURVMAX_PLAGUE] <- SURVMAX_PLAGUE
-  # 
-  # #  plot(NextPlagueSurvRaster) 
-  # 
-  # ###################
-  # # account for fitness costs due to selection
-  # NextNormalSurvRaster[(PlagueRaster==1)&(thisPop>0)] <- NextNormalSurvRaster[(PlagueRaster==1)&(thisPop>0)] - 
-  #   PlagueResistancePotentialRaster[(PlagueRaster==1)&(thisPop>0)] * FITNESS_COST     # account for fitness cost during plague
-  # NextNormalSurvRaster[NextNormalSurvRaster<SURVMIN_NOPLAGUE] <- SURVMIN_NOPLAGUE
-  # 
-  # #  plot(NextNormalSurvRaster) 
-  # 
-  # NextPlagueSurvRaster[(PlagueRaster==0)&(thisPop>0)] <- NextPlagueSurvRaster[(PlagueRaster==0)&(thisPop>0)] - 
-  #   PlagueResistancePotentialRaster[(PlagueRaster==0)&(thisPop>0)] * FITNESS_COST   # account for fitness cost during no plague 
-  # NextPlagueSurvRaster[NextPlagueSurvRaster<SURVMIN_PLAGUE] <- SURVMIN_PLAGUE
-  # 
-  # #  plot(NextPlagueSurvRaster) 
-  # # account for fitness costs due to selection
-  # NextNormalSurvRaster[(PlagueRaster==0)&(thisPop>0)] <- NextNormalSurvRaster[(PlagueRaster==0)&(thisPop>0)] + 
-  #   PlagueResistancePotentialRaster[(PlagueRaster==0)&(thisPop>0)] * FITNESS_COST     # account for loss of resistance during no plague
-  # NextNormalSurvRaster[NextNormalSurvRaster>SURVMAX_NOPLAGUE] <- SURVMAX_NOPLAGUE
-  # 
-  # 
-  # #plot(NextNormalSurvRaster)
-  # # }else{
-  # #   thisPop <- thisPop*thisSurvRaster   # no demographic stochasticity here... 
-  # #   #plot(thisPop)
-  # # }
-  # 
-  # i=rasterNames[2]
-  # for(i in rasterNames){
-  #   if(i!="PopArray")
-  #   assign(i,eval(parse(text=i)),envir = .GlobalEnv)
-  # }
-  # 
-  return(thisPop)
+  ##########
+  #  DEMOGRAPHIC STOCHASTICITY
+  ##########
+  
+  for(status in c("resistant","susceptible")){
+    thisPop[[status]] <- calc(thisPop[[status]],fun=demographicStoch)
+  }
+  
+  
+  ##########
+  #  REVERT TO UNSTRUCTURED POPULATION
+  ##########
+  
+  NewDensRaster <- GetUnstructuredPop(thisPop,FreqList)    # break out population into resistant and non-resistant (and account for genes/resistance factors)
+  
+  return(NewDensRaster)
 }
 
 ##################
@@ -1036,3 +1034,113 @@ doAllee <- function(){
 }
 
 
+
+
+
+# this function takes gene frequencies and converts to "factor" frequencies...
+Gene2Factor <- function(UserParams, FreqList = InitFreqList){
+  newlist <- list()
+  gene=1
+  for(gene in 1:UserParams$Genetics$NGENES){
+    name = sprintf("gene%s",gene)
+    name2 = sprintf("factor%s",gene)
+    newlist[[name2]] =  FreqList[[name]]^2 * UserParams$Genetics$DOMINANCE[gene,1] +
+      (2*FreqList[[name]]*(1-FreqList[[name]])) * UserParams$Genetics$DOMINANCE[gene,2]
+  }
+  newlist <- stack(newlist)
+  return(newlist)
+}
+
+# this function takes gene frequencies and abundances and converts to resistant freqs and susceptible freqs...
+StrFreqFunc <- function(UserParams,DensRaster=InitDensRaster,ResistRaster=ResistRaster,FreqList = InitFreqList){
+  reslist <- list()
+  suslist <- list()
+  #  temp <- DensRaster*F
+  gene=1
+  PerHet <- ((2/FreqList)-2)/(((2/FreqList)-2)+1)    # percent heterozygotes for dominant factors in resistant pool
+  for(gene in 1:UserParams$Genetics$NGENES){
+    name = sprintf("gene%s",gene)
+    suslist[[name]] <- 2*DensRaster*FreqList[[name]]  # total resistance alleles in the population
+    reslist[[name]] <- reclassify(FreqList[[name]],rcl=c(-Inf,Inf,0))
+    
+    # number of resistance alleles in the resistant pool for each gene
+    if(sum(UserParams$Genetics$DOMINANCE[gene,])==2){   # if fully dominant
+      reslist[[name]] <- reslist[[name]] + (2*ResistRaster) * (1-PerHet[[name]])  +
+        ResistRaster*PerHet[[name]]
+      suslist[[name]] <- suslist[[name]] - reslist[[name]]  # number of resistance alleles remaining in the susceptible population    
+    }else{
+      reslist[[name]] <- reslist[[name]] + (2*ResistRaster) * UserParams$Genetics$DOMINANCE[gene,1] +
+        (ResistRaster) * UserParams$Genetics$DOMINANCE[gene,2]
+      suslist[[name]] <- suslist[[name]] - reslist[[name]]  # number of resistance alleles remaining in the susceptible population
+    }  
+    reslist[[name]] <- reslist[[name]]/(2*ResistRaster)  # allele frequency in res pop
+    suslist[[name]] <- suslist[[name]]/(2*(DensRaster-ResistRaster))  # freq in sus pop
+  }
+  reslist <- stack(reslist)
+  suslist <- stack(suslist)
+  assign(x="reslist",value=reslist, envir = .GlobalEnv)   # assign the variable to the global environment
+  assign(x="suslist",value=suslist, envir = .GlobalEnv)   # assign the variable to the global environment
+}
+
+resistfunc <- function(ngenes=UserParams$Genetics$NGENES){      # this function assumes that all factors are needed for resistance                    
+  nargs <- ngenes
+  arguments <- paste("X",c(1:nargs),sep="")
+  arguments2 <- paste(arguments, collapse=",")
+  arguments3 <- paste(arguments, collapse="*")
+  expression <- sprintf("function(%s) %s ",arguments2,arguments3)
+  eval(parse(text=expression))
+}
+
+
+UserParams$Genetics$RESISTANCE_SCENARIOS[[1]]
+
+
+IsResistant <- function(DensRaster=InitDensRaster,FreqList=InitFreqList,fungen=resistfunc){
+  FactorList <- Gene2Factor(UserParams,FreqList)
+  temp <- overlay(FactorList,fun=fungen(UserParams$Genetics$NGENES)) #round(InitDensRaster*InitFreq[["gene1"]])   # freq of resist for each grid cell
+  ResistRaster <- overlay(DensRaster,temp,fun=function(x,y) x*y)      # numbers of resistant individuals in each grid cell
+  StrFreqFunc(UserParams,DensRaster,ResistRaster,FreqList) # returns "suslist" and "reslist" to global env
+  return(ResistRaster)
+}
+
+# use a closure    
+FCfunc <- function(ngenes){   # assume that fitness costs are simply additive
+  nargs <- ngenes
+  arguments <- paste("X",c(1:nargs),sep="")
+  arguments2 <- paste(arguments, collapse=",")
+  arguments3 <- paste(paste("UserParams$Genetics$FITNESS_COST[",c(1:ngenes),"]*",arguments,sep=""),collapse="+")
+  
+  #FITNESS_COST[1]*X1 + FITNESS_COST[2]*X2 
+  expression <- sprintf("function(%s) %s ",arguments2,arguments3)
+  eval(parse(text=expression))
+}
+
+FitnessCost <- function(FreqList=InitFreqList){
+  FCraster <- overlay(FreqList,fun=FCfunc(UserParams$Genetics$NGENES))  # degree of fitness cost
+  return(FCraster)
+}
+
+
+# function for computing the allele (factor) frequecies for the structured population (resistant and susceptible...)
+
+
+# use information on frequencies of resistance factors to struture population into resistance categories
+GetStructuredPop <- function(DensRaster=InitDensRaster,FreqList=InitFreqList){
+  Pop <- list()
+  Pop[["resistant"]] <- IsResistant(DensRaster,FreqList)      # structure by susceptible and resistant. 
+  Pop[["susceptible"]] <- DensRaster - Pop[["resistant"]]
+  Pop <- stack(Pop)
+  return(Pop)
+}
+
+
+# use information on frequencies of resistance factors to struture population into resistance categories
+GetUnstructuredPop <- function(PopArray=PopArray,FreqList=FreqList){
+  Dens <- overlay(PopArray,fun=sum)    # get total population size
+  for(i in 1:UserParams$Genetics$NGENES){
+    name <- sprintf("gene%s",i)
+    FreqList[[name]] <- (suslist[[name]]*PopArray[["susceptible"]] + reslist[[name]]*PopArray[["resistant"]])/Dens
+  }
+  assign("FreqList",FreqList,envir=.GlobalEnv)
+  return(Dens)
+}
