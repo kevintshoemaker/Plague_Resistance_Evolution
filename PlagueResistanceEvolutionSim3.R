@@ -89,7 +89,7 @@ PlagueModel <- GetPlagueModel()    # for now, use fake plague model- will be a s
 
 ######################################
 #########################
-######  INITIALIZE!
+######  INITIALIZE THE SYSTEM!
 #########################
 
 
@@ -106,51 +106,9 @@ plot(InitDensRaster)
 #######################
 # NOTE: Some regions are more likely to evolve faster because they have greater percentages of those genes that can confer resistance. 
 
-InitFreqList <- list()
-
-UserParams$Genetics$INITFREQ
-
-i=1
-for(i in 1:UserParams$Genetics$NGENES){
-  name <- sprintf("gene%s",i)
-  temp <- rnorm(nPatches,UserParams$Genetics$INITFREQ[1],UserParams$Genetics$INITFREQ_SD[1])
-  temp <- ifelse(temp<0,0.01,temp)
-  InitFreqList[[name]] <- reclassify(patchIDRaster,rcl=cbind(c(1:nPatches),temp))
-}
-
-plot(InitFreqList[["gene1"]])
-
-InitFreqList <- stack(InitFreqList)
+InitFreqList <- GetInitFreqs(UserParams)
 
 plot(InitFreqList)
-
-#####################
-# FUNCTION FOR DETERMINING RESISTANCE STATUS FROM GENOTYPE
-#####################
-
-# ultimately this will be a function of underlying binary genotypes. 
-     # e.g., if factor A is present in 20% of the pop and factor B is present in 5% of the pop and 
-     # both factors are necessary for resistance, then 1% of the population will be resistant. This function could be complex.
-     #  i.e., either factors (A and B) OR (C and D) lead to resistance.
-
-# this can be simple as long as we don't assume linkage or some such thing!
-
-# t <- c(NA,NA,)
-# IsResistantFunc <- function(abundraster,freqstack){
-#   
-#       # for now, assume you need both genes to be resistant
-# }
-
-    # use a closure?
-
-# TODO: account for multiple different ways of getting resistance
-# TODO: keep track of frequencies of each factor within the resistant and susceptible pools (so they can be enriched appropriately)
-# TODO: account for heterozygotes and homozygotes?? [in the future!]
-#        right now they are assumed to be all dominant!!
-# TODO: keep track of dominance!!
-
-
-
 
 
 #####################
@@ -173,7 +131,7 @@ plot(PopArray)
   
 
 ######################
-# INITIALIZE PLAGUE PROCESS   [KTS: moving away from this and towards a statistical model]
+# INITIALIZE PLAGUE PROCESS   [KTS: moving away from this and towards a purely statistical model]
 ######################
 #  for now, assume that plague hits at the patch level, and is a random process.
 
@@ -201,8 +159,6 @@ plot(PlagueRaster)
 #rasterNames  <- c("PopArray","NextPlagueSurvRaster","NextNormalSurvRaster","PlagueResistancePotentialRaster")   # Deprecate?
 
 
-DensRaster <- InitDensRaster
-  
 # t=which(plagueyear)[1]
 t=0
 t=t+1
@@ -210,27 +166,29 @@ for(t in 1:(NYEARS)){
   deviate <- rnorm(1)   #determine if this is a good year or a bad year (for now, survival and fecundity are perfectly correlated)
   cv=UserParams$Popbio$CV_SURVIVAL   # set up for using the getYearVariate function
   
+  if(t==1){ FreqList=InitFreqList; DensRaster=InitDensRaster; newFociRaster <- reclassify(PopArray,rcl=c(-Inf,Inf,0)) }    # initial conditions
+  
   ##################
   # DENSITY INDEPENDENT SURVIVAL (including plague survival)
   ##################
   
   #PopArray <- GetStructuredPop(DensRaster)
   
-  DensRaster <- doSurvival(UserParams,DensRaster,PlagueRaster=PlagueRaster,FreqList)
+  DensRaster <- doSurvival(UserParams,DensRaster,PlagueRaster,FreqList)
   # plot(DensRaster)
   
   ################
   # REPRODUCTION
   ################
   
-  DensRaster <- doReproduce(UserParams,DensRaster,PlagueRaster = PlagueRaster)    # TODO: make specific to each resistance type...?
+  DensRaster <- doReproduce(UserParams,DensRaster,PlagueRaster)    # TODO: make specific to each resistance type...?
   # plot(DensRaster)
   
   
   ###############
   # DISPERSAL: Move individuals around the landscape (this takes a while!)
   ###############
-  PopArray <- doDispersal(t=t,PlagueRaster=PlagueRaster)
+  PopArray <- doDispersal(UserParams,PlagueRaster)
   # plot(PopArray)    # good in t=1, not so much in t=2
   
   ###############
