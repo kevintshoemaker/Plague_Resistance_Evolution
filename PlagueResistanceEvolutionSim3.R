@@ -32,8 +32,8 @@ NYEARS <- 20
 ## SET BASE DIRECTORY
 ############
 
-KEVIN_LAPTOP <- TRUE #  FALSE #  
-KEVIN_OFFICEPC <- FALSE # TRUE # 
+KEVIN_LAPTOP <- FALSE #  TRUE #  
+KEVIN_OFFICEPC <- TRUE # FALSE # 
 
 if(KEVIN_LAPTOP) BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
 if(KEVIN_OFFICEPC) BASE_DIR <- "E:\\Dropbox\\PlagueModeling\\ResistanceEvolution"
