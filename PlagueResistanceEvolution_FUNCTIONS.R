@@ -174,7 +174,7 @@ DefineUserParams <- function(){
 #
 # This function determines which populations currently have plague given statistical model)
 
-doPlague <- function(UserParams,PlagueRaster=PlagueRaster,PopArray=PopArray){ 
+doPlague <- function(UserParams,PlagueRaster=PlagueRaster,DensRaster=DensRaster){ 
   
   nPlagueNeighbors <- focal(PlagueRaster, w=matrix(1, nc=UserParams$Dispersal$MAXDISPERSAL_CELLS, nr=UserParams$Dispersal$MAXDISPERSAL_CELLS),na.rm=T)
   
@@ -182,7 +182,7 @@ doPlague <- function(UserParams,PlagueRaster=PlagueRaster,PopArray=PopArray){
   # plot(nPlagueNeighbors)
   
   newdf <- data.frame(
-    dens = PopArray@data@values,
+    dens = DensRaster@data@values,
     plaguepops = nPlagueNeighbors@data@values
   )
   
@@ -408,8 +408,9 @@ InitializeLandscape <- function(solid=F){
 ###################
 # Add (or subtract) individuals from cells during dispersal phase
 
-UpdateAbund <- function(focalxy=xy, stack=newStack, df=toAdd_df){
+UpdateAbund <- function(focalxy=xy, stack, df=toAdd_df){
   #browser()
+  newstack <- stack
   focalndx <- cellFromXY(DensRaster,focalxy)
   ndx <- cellFromXY(DensRaster,df[,c("x","y")])
   indiv <- df[,3]   # individuals to add
@@ -419,12 +420,12 @@ UpdateAbund <- function(focalxy=xy, stack=newStack, df=toAdd_df){
     if(i=="DensRaster"){
       Add <- indiv
     }else{
-      Add <- eval(parse(text=sprintf("FreqList[[%s]]",i)))[focalndx]*indiv   # otherwise, add to the total in each cell for averaging (evolving!)
+      Add <- eval(parse(text=sprintf("FreqList[[\"%s\"]]",i)))[focalndx]*indiv   # otherwise, add to the total in each cell for averaging (evolving!)
       # add the focal value of evolving layers to the surrounding cells   [change this!!!]
     }
-    stack[[i]][ndx] <- stack[[i]][ndx]+Add
+    newstack[[i]][ndx] <- newstack[[i]][ndx]+Add
   }
-  return(stack)
+  return(newstack)
 }
 
 ##################
@@ -436,14 +437,17 @@ UpdateAbund <- function(focalxy=xy, stack=newStack, df=toAdd_df){
 UpdateStack <- function(stack=newStack){
   names <- names(stack)
   # i=names[2]
+  keep <- c()
   for(i in names){
-    if(i!="PopArray"){
-      ndx <- which(stack[["PopArray"]]@data@values>0)  #only consider cells with actual individuals
-      stack[[i]][ndx] <- stack[[i]][ndx]/stack[['PopArray']][ndx]    # get the population mean for key evolving variables
-      stack[[i]][stack[["PopArray"]]@data@values==0] <- 0
-      assign(x=i,value=stack[[i]], envir = .GlobalEnv)   # assign the variable to the global environment
+    if(i!="DensRaster"){
+      ndx <- which(stack[["DensRaster"]]@data@values>0.00001)  #only consider cells with actual individuals
+      stack[[i]][ndx] <- stack[[i]][ndx]/stack[['DensRaster']][ndx]    # get the population mean for key evolving variables
+      stack[[i]][stack[["DensRaster"]]@data@values<=0.00001] <- 0
+      keep <- c(keep,i)
     }
   }
+  return <- subset(stack,subset=keep,drop=FALSE)
+  assign(x="FreqList",value=return, envir = .GlobalEnv)   # assign the variable to the global environment
   #return(stack)
 }
 
@@ -740,8 +744,9 @@ doDispersal <- function(UserParams,PlagueRaster=PlagueRaster){
       #n = rasterNames[2]
   geneNames <- names(FreqList)
   
+  n="gene1"              # add the genetics of staying individuals
   for(n in geneNames){
-    newStack[[n]][stayRaster>0] <- newStack[[n]][stayRaster>0]*stayRaster[stayRaster>0]     # stayers contribute to post-dispersal allele frequenceis
+    newStack[[n]][stayRaster>=0] <- newStack[[n]][stayRaster>=0]*stayRaster[stayRaster>=0]     # stayers contribute to post-dispersal allele frequencies
       # plot(eval(parse(text=n)))
       # plot(eval(parse(text=n))*stayRaster)
       # plot(newStack[[n]])
@@ -838,6 +843,7 @@ doDispersal <- function(UserParams,PlagueRaster=PlagueRaster){
 #   plot(newStack[["DensRaster"]])
 #   plot(newFociRaster)
 #   plot(DensRaster)
+#   plot(FreqList[[1]])
 #   plot(PlagueRaster)
 #   plot(newStack[[rasterNames[2]]])     # plague survival
   #   plot(newStack[[rasterNames[3]]])
@@ -852,7 +858,7 @@ doDispersal <- function(UserParams,PlagueRaster=PlagueRaster){
   totfoci <- length(foci_ndx)
   # focalcell <- foci_ndx[6]
   if(totfoci>0){
-    names <- rasterNames   #names(newStack) 
+    names <- paste("gene",1:UserParams$Genetics$NGENES,sep="") 
     focalcell = foci_ndx[1]
     for(focalcell in foci_ndx){  #loop through foci and spread them out!
       
@@ -870,15 +876,17 @@ doDispersal <- function(UserParams,PlagueRaster=PlagueRaster){
       for(i in names){
         if(i!="DensRaster"){
           temp <- newStack[[i]][focalcell]/thisAbund    # get the population mean for key evolving variables
-          eval(parse(text=sprintf("%s[focalcell]<-temp",i)))   # does this need a double arrow when in function? how to assign this to global environment
-          assign(x=i,value=eval(parse(text=i)), envir = .GlobalEnv)   # assign the variable to the global environment
+          eval(parse(text=sprintf("FreqList[[\"%s\"]][focalcell]<-temp",i)))   # does this need a double arrow when in function? how to assign this to global environment
+          #assign(x=i,value=eval(parse(text=i)), envir = .GlobalEnv)   # assign the variable to the global environment
         }
       }
+      
+      assign(x="FreqList",value=eval(parse(text="FreqList")), envir = .GlobalEnv)   # assign the variable to the global environment
       
       overcrowded <- thisAbund>UserParams$Popbio$MAXABUND # if overcrowded, then dispersal will unfold in a certain way: e.g., colony will expand outward
       
       if((overcrowded)){   # if focal cell is overcrowded 
-        stay <- MAXABUND-thisAbund  # number that should stay (here, negative so that individuals are removed)
+        stay <- UserParams$Popbio$MAXDENS_HA-thisAbund  # number that should stay (here, negative so that individuals are removed)
         newStack <- UpdateAbund(focalxy=xy,stack=newStack,df=as.data.frame(cbind(xy,stay)))   # keep the "stay" individuals in place
         leave <- max(0,thisAbund-UserParams$Popbio$MAXABUND)  
         
@@ -1038,12 +1046,12 @@ doSurvival <- function(UserParams, DensRaster=InitDensRaster,PlagueRaster=Plague
 # DD SURVIVAL FUNCTION
 ##################
 
-doDDSurvival <- function(){
+doDDSurvival <- function(UserParams,DensRaster){
   
-  thisPop <- PopArray
-  for(status in c("resistant","susceptible")){
-    thisPop[[status]][PopArray>(MAXABUND*1.15)] <- MAXABUND*1.15  # kill off all individuals in populations above the threshold
-  }
+  thisPop <- DensRaster
+  #for(status in c("resistant","susceptible")){
+    thisPop[DensRaster>(UserParams$Popbio$MAXDENS_HA*1.15)] <- UserParams$Popbio$MAXDENS_HA*1.15  # kill off all individuals in populations above the threshold
+  #}
   return(thisPop)
   
 }
@@ -1055,8 +1063,8 @@ doDDSurvival <- function(){
 
 doAllee <- function(){
   
-  thisPop <- PopArray
-  thisPop[PopArray<MINABUND] <- 0  # kill off all individuals in populations below the threshold
+  thisPop <- DensRaster
+  thisPop[DensRaster<MINABUND] <- 0  # kill off all individuals in populations below the threshold
   return(thisPop)
   
 }
@@ -1168,9 +1176,13 @@ GetStructuredPop <- function(DensRaster=InitDensRaster,FreqList=InitFreqList){
 # use information on frequencies of resistance factors to struture population into resistance categories
 GetUnstructuredPop <- function(PopArray=PopArray,FreqList=FreqList){
   Dens <- overlay(PopArray,fun=sum)    # get total population size
+  i=1
   for(i in 1:UserParams$Genetics$NGENES){
     name <- sprintf("gene%s",i)
-    FreqList[[name]] <- (suslist[[name]]*PopArray[["susceptible"]] + reslist[[name]]*PopArray[["resistant"]])/Dens
+    ndx1 <- Dens@data@values>0
+    ndx2 <- Dens@data@values==0
+    FreqList[[name]][ndx1] <- (suslist[[name]][ndx1]*PopArray[["susceptible"]][ndx1] + reslist[[name]][ndx1]*PopArray[["resistant"]][ndx1])/Dens[ndx1]
+    FreqList[[name]][ndx2] <- 0
   }
   assign("FreqList",FreqList,envir=.GlobalEnv)
   return(Dens)

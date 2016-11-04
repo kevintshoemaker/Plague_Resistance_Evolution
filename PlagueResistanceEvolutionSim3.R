@@ -22,7 +22,6 @@ library("raster")
 library("secr")
 library("igraph")
 
-
 ############
 ## SIMULATION CONTROLS
 ############
@@ -143,7 +142,7 @@ plot(PopArray)
 
 PlagueRaster_template <- reclassify(patchIDRaster,rcl=c(-Inf,Inf,0))   
 
-PlagueRaster <- doPlague(UserParams,PlagueRaster=PlagueRaster_template, PopArray=reclassify(patchIDRaster,rcl=c(-Inf,Inf,0)))
+PlagueRaster <- doPlague(UserParams,PlagueRaster=PlagueRaster_template, DensRaster=reclassify(patchIDRaster,rcl=c(-Inf,Inf,0)))
 
 
 plot(PlagueRaster)
@@ -166,7 +165,7 @@ for(t in 1:(NYEARS)){
   deviate <- rnorm(1)   #determine if this is a good year or a bad year (for now, survival and fecundity are perfectly correlated)
   cv=UserParams$Popbio$CV_SURVIVAL   # set up for using the getYearVariate function
   
-  if(t==1){ FreqList=InitFreqList; DensRaster=InitDensRaster; newFociRaster <- reclassify(PopArray,rcl=c(-Inf,Inf,0)) }    # initial conditions
+  if(t==1){ FreqList=InitFreqList; DensRaster=InitDensRaster; newFociRaster <- reclassify(DensRaster,rcl=c(-Inf,Inf,0)) }    # initial conditions
   
   ##################
   # DENSITY INDEPENDENT SURVIVAL (including plague survival)
@@ -176,6 +175,7 @@ for(t in 1:(NYEARS)){
   
   DensRaster <- doSurvival(UserParams,DensRaster,PlagueRaster,FreqList)
   # plot(DensRaster)
+  # plot(FreqList[["gene1"]])
   
   ################
   # REPRODUCTION
@@ -183,13 +183,14 @@ for(t in 1:(NYEARS)){
   
   DensRaster <- doReproduce(UserParams,DensRaster,PlagueRaster)    # TODO: make specific to each resistance type...?
   # plot(DensRaster)
-  
+  # plot(FreqList[["gene1"]])
   
   ###############
   # DISPERSAL: Move individuals around the landscape (this takes a while!)
   ###############
-  PopArray <- doDispersal(UserParams,PlagueRaster)
-  # plot(PopArray)    # good in t=1, not so much in t=2
+  DensRaster <- doDispersal(UserParams,PlagueRaster)
+  # plot(DensRaster)    # good in t=1, not so much in t=2
+  # plot(FreqList[["gene2"]])
   
   ###############
   # ALLEE EFFECT: REMOVE POPULATIONS BELOW A MINIMUM ABUNDANCE THRESHOLD
@@ -201,14 +202,15 @@ for(t in 1:(NYEARS)){
   ###############
   # CLEAR excess individuals from cells (DD)
   
-  PopArray <- doDDSurvival()
-  # plot(PopArray) 
+  DensRaster <- doDDSurvival(UserParams,DensRaster)
+  # plot(DensRaster) 
+  # plot(FreqList[["gene1"]])
   
   ##################
   # PLAGUE PRESSURE
   ##################
   
-  PlagueRaster <- doPlague(PlagueRaster=PlagueRaster,PopArray = PopArray)
+  PlagueRaster <- doPlague(UserParams,PlagueRaster=PlagueRaster,DensRaster=DensRaster)
   # plot(PlagueRaster)
   
   
@@ -238,22 +240,52 @@ for(t in 1:(NYEARS)){
     plot(patchRaster,col=gray(0.7),legend=F)
      #col = colorRampPalette(c("red","red"))(1)
     col = rgb(0,seq(0,1,length=10),0)
-    plot(reclassify(PopArray,rcl=c(-Inf,5,NA)),add=T,legend=T)
+    plot(reclassify(DensRaster,rcl=c(-Inf,5,NA)),add=T,legend=T)
     #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
     #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
   dev.off()
 
-      # evolution figure
+      # evolution figure 1
   setwd(FIGS_DIR)
-    file = sprintf("PlagueSurvFig_year%s.tif",t)
+    file = sprintf("Gene1FreqFig_year%s.tif",t)
     tiff(file, width=width,height=height)
     plot(patchRaster,col=gray(0.7),legend=F)
     #col = colorRampPalette(c("red","red"))(1)
-    col = rgb(0,seq(0,maxValue(NextPlagueSurvRaster),length=10),0)
-    plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
+    col = rgb(0,seq(0,maxValue(FreqList[["gene1"]]),length=10),0)
+    plot(reclassify(FreqList[["gene1"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
     #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
     #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
   dev.off()  
+  
+  # evolution figure 1
+  setwd(FIGS_DIR)
+    file = sprintf("AllGenesFreqFig_year%s.tif",t)
+    tiff(file, width=width*1.5,height=height)
+    par(mfrow=c(1,2))
+    plot(patchRaster,col=gray(0.7),legend=F,main="Gene 1")
+    #col = colorRampPalette(c("red","red"))(1)
+    col = rgb(0,seq(0,maxValue(FreqList[["gene1"]]),length=10),0)
+    plot(reclassify(FreqList[["gene1"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
+    
+    plot(patchRaster,col=gray(0.7),legend=F,main="Gene 2")
+    #col = colorRampPalette(c("red","red"))(1)
+    col = rgb(0,seq(0,maxValue(FreqList[["gene2"]]),length=10),0)
+    plot(reclassify(FreqList[["gene2"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
+    #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
+    #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
+  dev.off() 
+  
+  # allgenes evolution figure
+  setwd(FIGS_DIR)
+    file = sprintf("Gene2FreqFig_year%s.tif",t)
+    tiff(file, width=width,height=height)
+    plot(patchRaster,col=gray(0.7),legend=F)
+    #col = colorRampPalette(c("red","red"))(1)
+    col = rgb(0,seq(0,maxValue(FreqList[["gene2"]]),length=10),0)
+    plot(reclassify(FreqList[["gene2"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
+    #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
+    #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
+  dev.off()
   
     # plague figure
   setwd(FIGS_DIR)
