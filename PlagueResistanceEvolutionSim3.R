@@ -32,8 +32,8 @@ NYEARS <- 20
 ## SET BASE DIRECTORY
 ############
 
-KEVIN_LAPTOP <- FALSE #  TRUE #  
-KEVIN_OFFICEPC <- TRUE # FALSE # 
+KEVIN_LAPTOP <- TRUE #  FALSE #  
+KEVIN_OFFICEPC <- FALSE # TRUE # 
 
 if(KEVIN_LAPTOP) BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
 if(KEVIN_OFFICEPC) BASE_DIR <- "E:\\Dropbox\\PlagueModeling\\ResistanceEvolution"
@@ -49,6 +49,8 @@ if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
 DATA_DIR <- sprintf("%s\\Data",BASE_DIR)
 
 FIGS_DIR <- sprintf("%s\\RawFigs",BASE_DIR)
+
+MOVIE_DIR <- sprintf("%s\\Movies",BASE_DIR)
 
 setwd(DATA_DIR)
 
@@ -75,7 +77,7 @@ InitializeDispersal(UserParams)
 # INITIALIZE LANDSCAPE
 ########################
 
-InitializeLandscape(solid=F)   # generate patchmaps etc.
+InitializeLandscape(solid=T)   # generate patchmaps etc.
 
 plot(patchRaster)
 plot(patchIDRaster)
@@ -235,7 +237,7 @@ for(t in 1:(NYEARS)){
   
       # abundance figure
   setwd(FIGS_DIR)
-    file = sprintf("AbundanceFig_year%s.tif",t)
+    file = sprintf("AbundanceFig_year%03d.tif",t)
     tiff(file, width=width,height=height)
     plot(patchRaster,col=gray(0.7),legend=F)
      #col = colorRampPalette(c("red","red"))(1)
@@ -245,21 +247,21 @@ for(t in 1:(NYEARS)){
     #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
   dev.off()
 
-      # evolution figure 1
-  setwd(FIGS_DIR)
-    file = sprintf("Gene1FreqFig_year%s.tif",t)
-    tiff(file, width=width,height=height)
-    plot(patchRaster,col=gray(0.7),legend=F)
-    #col = colorRampPalette(c("red","red"))(1)
-    col = rgb(0,seq(0,maxValue(FreqList[["gene1"]]),length=10),0)
-    plot(reclassify(FreqList[["gene1"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
-    #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
-    #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
-  dev.off()  
+  #     # evolution figure 1
+  # setwd(FIGS_DIR)
+  #   file = sprintf("Gene1FreqFig_year%03d.tif",t)
+  #   tiff(file, width=width,height=height)
+  #   plot(patchRaster,col=gray(0.7),legend=F)
+  #   #col = colorRampPalette(c("red","red"))(1)
+  #   col = rgb(0,seq(0,maxValue(FreqList[["gene1"]]),length=10),0)
+  #   plot(reclassify(FreqList[["gene1"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
+  #   #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
+  #   #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
+  # dev.off()  
   
   # evolution figure 1
   setwd(FIGS_DIR)
-    file = sprintf("AllGenesFreqFig_year%s.tif",t)
+    file = sprintf("AllGenesFreqFig_year%03d.tif",t)
     tiff(file, width=width*1.5,height=height)
     par(mfrow=c(1,2))
     plot(patchRaster,col=gray(0.7),legend=F,main="Gene 1")
@@ -275,21 +277,21 @@ for(t in 1:(NYEARS)){
     #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
   dev.off() 
   
-  # allgenes evolution figure
-  setwd(FIGS_DIR)
-    file = sprintf("Gene2FreqFig_year%s.tif",t)
-    tiff(file, width=width,height=height)
-    plot(patchRaster,col=gray(0.7),legend=F)
-    #col = colorRampPalette(c("red","red"))(1)
-    col = rgb(0,seq(0,maxValue(FreqList[["gene2"]]),length=10),0)
-    plot(reclassify(FreqList[["gene2"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
-    #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
-    #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
-  dev.off()
+  # # allgenes evolution figure
+  # setwd(FIGS_DIR)
+  #   file = sprintf("Gene2FreqFig_year%03d.tif",t)
+  #   tiff(file, width=width,height=height)
+  #   plot(patchRaster,col=gray(0.7),legend=F)
+  #   #col = colorRampPalette(c("red","red"))(1)
+  #   col = rgb(0,seq(0,maxValue(FreqList[["gene2"]]),length=10),0)
+  #   plot(reclassify(FreqList[["gene2"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
+  #   #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
+  #   #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
+  # dev.off()
   
     # plague figure
   setwd(FIGS_DIR)
-  file = sprintf("PlagueFig_year%s.tif",t)
+  file = sprintf("PlagueFig_year%03d.tif",t)
   tiff(file, width=width,height=height)
   plot(patchRaster,col=gray(0.7),legend=F)
   #col = colorRampPalette(c("red","red"))(1)
@@ -314,6 +316,61 @@ for(t in 1:(NYEARS)){
   # plot(test)
    
 }
+
+
+###############
+# MAKE MOVIE   (need ffmpeg and imagemagick installed)
+###############
+
+## NOTE: need command line like this: ffmpeg -f image2 -framerate 2 -i AbundanceFig_year%03d.tif -s 500x500 test.avi -y
+
+# MAKING THE REAL MOVIE HERE! USE IMAGE MAGICK AND FFMPEG SOFTWARE  (https://blogazonia.wordpress.com/2016/01/19/making-a-movie-with-r/)
+
+
+# create the movie
+cmd_abundmov <- paste0("ffmpeg -f image2 -framerate 2 -i AbundanceFig_year%03d.tif -s 500x500 ", 
+                       sprintf("%s\\AbundanceMovie.avi",MOVIE_DIR)," -y")
+
+cmd_evolutionmov <- paste0("ffmpeg -f image2 -framerate 2 -i AllGenesFreqFig_year%03d.tif -s 800x500 ", 
+                       sprintf("%s\\EvolutionMovie.avi",MOVIE_DIR)," -y")
+
+cmd_plaguemov <- paste0("ffmpeg -f image2 -framerate 2 -i PlagueFig_year%03d.tif -s 500x500 ", 
+                           sprintf("%s\\PlagueMovie.avi",MOVIE_DIR)," -y")
+
+system(cmd_abundmov)
+
+system(cmd_evolutionmov)
+
+system(cmd_plaguemov)
+
+
+
+
+library(animation)
+
+
+setwd(FIGS_DIR)
+saveGIF(movie.name = "abundanceMovie.gif", img.name = "AbundanceFig_year", convert = "convert",
+          clean = FALSE)
+
+
+saveVideo({
+  par(mar = c(3, 3, 1, 0.5), mgp = c(2, 0.5, 0), tcl = -0.3, cex.axis = 0.8,
+      cex.lab = 0.8, cex.main = 1)
+  ani.options(interval = 0.05, nmax = 300)
+  brownian.motion(pch = 21, cex = 5, col = "red", bg = "yellow")
+}, video.name = "BM.mp4", other.opts = "-pix_fmt yuv420p -b 300k")
+# higher bitrate, better quality
+
+oopts = if (.Platform$OS.type == "windows") {
+  ani.options(ffmpeg = "C:\\FFMPEG\\bin\\ffmpeg.exe")
+}
+
+
+
+
+
+
 
 
 ?rgb
