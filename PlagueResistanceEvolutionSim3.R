@@ -14,13 +14,6 @@
 
 rm(list=ls())
 
-############
-## LOAD PACKAGES
-############
-
-library("raster")
-library("secr")
-library("igraph")
 
 ############
 ## SIMULATION CONTROLS
@@ -29,30 +22,14 @@ library("igraph")
 NYEARS <- 20
 
 ############
-## SET BASE DIRECTORY
+## SET GLOBAL VARS
 ############
 
 KEVIN_LAPTOP <- FALSE #  TRUE #  
 KEVIN_OFFICEPC <- TRUE # FALSE # 
 
-if(KEVIN_LAPTOP) BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
-if(KEVIN_OFFICEPC) BASE_DIR <- "E:\\Dropbox\\PlagueModeling\\ResistanceEvolution"
-
 if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
-
-############
-## SET UP WORKSPACE (define global variables)
-############
-
- # RSCRIPT_DIR <- sprintf("%s\\Rscripts",GIT_DIR)
-DATA_DIR <- sprintf("%s\\Data",BASE_DIR)
-
-FIGS_DIR <- sprintf("%s\\RawFigs",BASE_DIR)
-
-MOVIE_DIR <- sprintf("%s\\Movies",BASE_DIR)
-
-setwd(DATA_DIR)
 
 #####################
 # LOAD FUNCTIONS
@@ -61,313 +38,65 @@ setwd(DATA_DIR)
 setwd(GIT_DIR)
 source("PlagueResistanceEvolution_FUNCTIONS.R")
 
+
 ############
-## USER-DEFINED VARIABLES
+## SET UP WORKSPACE AND LOAD PACKAGES
 ############
 
-UserParams <- DefineUserParams()
+SetUpWorkspace()
+num_cores <- detectCores() - 1   # for setting up cluster... leave one core free for windows background processes?
 
-#####################
-# INITIALIZE DISPERSAL   (for both plague and no plague... )   
-#####################
+############
+## SAMPLE FROM LATIN HYPERCUBE
+############
 
-InitializeDispersal(UserParams)
+N_LHS_SAMPLES <- 10
 
-########################
-# INITIALIZE LANDSCAPE
-########################
+masterDF <- MakeLHSSamples(nicheBreadthDir=dir,NicheBreadth)
 
-InitializeLandscape(solid=T)   # generate patchmaps etc.
+###########
+##  START A PARALLEL FOR LOOP
+###########
 
-plot(patchRaster)
-plot(patchIDRaster)
-
-########################
-# GET PLAGUE MODEL
-########################
-
-PlagueModel <- GetPlagueModel()    # for now, use fake plague model- will be a statistical model
-
-######################################
-#########################
-######  INITIALIZE THE SYSTEM!
-#########################
-
-
-########################
-# INITIALIZE POPULATION
-########################
-
-InitDensRaster <- KRaster    # initialize abundance at carrying capacity
-plot(InitDensRaster)
+cl <- makeCluster(num_cores,outfile="LOG.TXT")
+registerDoParallel(cl=cl)    # make the cluster
 
 
 #######################
-# INITIALIZE ALLELE FREQUENCIES / RESISTANCE FACTORS [keep for now- will be multiple genes in the model somehow]
-#######################
-# NOTE: Some regions are more likely to evolve faster because they have greater percentages of those genes that can confer resistance. 
+## objects to export to each node in the cluster
 
-InitFreqList <- GetInitFreqs(UserParams)
+functionlist <- c()   # , 'mp.write'
+filelist <- c('masterDF')  #'MP_DIRECTORY','template','GENTIME','humanArrival.df','EXE_DIRECTORY','DLL_FILENAME','dispersalFunc.df','DistClasses','NPOPS','DistBins',
 
-plot(InitFreqList)
-
-
-#####################
-# INITIALIZE POPULATION
-#####################
+objectlist <- c(functionlist,filelist)   # full list of objects to export
 
 
-### Code block for pop starting from small loci
+packagelist <- c("secr","igraph","raster")
 
-InitDensRaster2 <- reclassify(patchIDRaster,rcl=c(-Inf,Inf,0))    # for testing
-ndx <- sample(which(!is.na(InitDensRaster2@data@values)),size=3)
-InitDensRaster2[ndx] <- 1000   # initialize population in random locations
-InitDensRaster <- InitDensRaster2
-#PopArray2 <- InitDensRaster   # copy, for dispersal algorithm... 
-
-
-PopArray <- GetStructuredPop(InitDensRaster)
-
-plot(PopArray)
+allsamples <- foreach(i = 1:nrow(masterDF),
+                      .export=objectlist,
+                      .packages = packagelist,
+                      .errorhandling=c("pass")
+) %dopar% {   
   
-
-######################
-# INITIALIZE PLAGUE PROCESS   [KTS: moving away from this and towards a purely statistical model]
-######################
-#  for now, assume that plague hits at the patch level, and is a random process.
-
-# PROB_PLAGUE_YEAR <- 0.5 # probability that a plague event hits (landscape level?)   # for now, plague only hits one patch in a plague year
-# 
-# plagueyear = as.logical(rbinom(NYEARS,1,PROB_PLAGUE_YEAR))
-# 
-# plagueNow = floor(runif(NYEARS,1,nPatches+1)) * as.numeric(plagueyear)    ## which patch plagues out?
-
-PlagueRaster_template <- reclassify(patchIDRaster,rcl=c(-Inf,Inf,0))   
-
-PlagueRaster <- doPlague(UserParams,PlagueRaster=PlagueRaster_template, DensRaster=reclassify(patchIDRaster,rcl=c(-Inf,Inf,0)))
-
-
-plot(PlagueRaster)
-
-
-
-####################
-# START LOOP THROUGH YEARS
-####################
-
-
-    # names of important raster maps to save to file etc...
-#rasterNames  <- c("PopArray","NextPlagueSurvRaster","NextNormalSurvRaster","PlagueResistancePotentialRaster")   # Deprecate?
-
-
-# t=which(plagueyear)[1]
-t=0
-t=t+1
-for(t in 1:(NYEARS)){
-  deviate <- rnorm(1)   #determine if this is a good year or a bad year (for now, survival and fecundity are perfectly correlated)
-  cv=UserParams$Popbio$CV_SURVIVAL   # set up for using the getYearVariate function
+  #####################
+  # LOAD FUNCTIONS
+  #####################
   
-  if(t==1){ FreqList=InitFreqList; DensRaster=InitDensRaster; newFociRaster <- reclassify(DensRaster,rcl=c(-Inf,Inf,0)) }    # initial conditions
-  
-  ##################
-  # DENSITY INDEPENDENT SURVIVAL (including plague survival)
-  ##################
-  
-  #PopArray <- GetStructuredPop(DensRaster)
-  
-  DensRaster <- doSurvival(UserParams,DensRaster,PlagueRaster,FreqList)
-  # plot(DensRaster)
-  # plot(FreqList[["gene1"]])
-  
-  ################
-  # REPRODUCTION
-  ################
-  
-  DensRaster <- doReproduce(UserParams,DensRaster,PlagueRaster)    # TODO: make specific to each resistance type...?
-  # plot(DensRaster)
-  # plot(FreqList[["gene1"]])
-  
-  ###############
-  # DISPERSAL: Move individuals around the landscape (this takes a while!)
-  ###############
-  DensRaster <- doDispersal(UserParams,PlagueRaster)
-  # plot(DensRaster)    # good in t=1, not so much in t=2
-  # plot(FreqList[["gene2"]])
-  
-  ###############
-  # ALLEE EFFECT: REMOVE POPULATIONS BELOW A MINIMUM ABUNDANCE THRESHOLD
-  ###############
-    #PopArray <- doAllee()
-  #if(MINABUND>0) PopArray <- doAllee()   # don't need this! all low-dens individuals move out anyway...
-  # $
-  
-  ###############
-  # CLEAR excess individuals from cells (DD)
-  
-  DensRaster <- doDDSurvival(UserParams,DensRaster)
-  # plot(DensRaster) 
-  # plot(FreqList[["gene1"]])
-  
-  ##################
-  # PLAGUE PRESSURE
-  ##################
-  
-  PlagueRaster <- doPlague(UserParams,PlagueRaster=PlagueRaster,DensRaster=DensRaster)
-  # plot(PlagueRaster)
+  setwd(GIT_DIR)
+  source("PlagueResistanceEvolution_FUNCTIONS.R")
   
   
+  ############
+  ## SET UP WORKSPACE AND LOAD PACKAGES
+  ############
   
+  SetUpWorkspace()
+  #num_cores <- detectCores() - 1   # for setting up cluster... leave one core free for windows background processes?
   
-  # # plot(PopArray)
-  # 
-#   plot(PopArray)    # okay
-#   plot(reclassify(NextNormalSurvRaster,rcl=c(NA,NA,0)))   # okay in t=1,2
-#   plot(NextNormalSurvRaster)
-#   plot(reclassify(NextPlagueSurvRaster,rcl=c(NA,NA,0)))    # okay t=1,2
-#   
-#   plot(newFociRaster)   # okay t=1
-#   
-#   plot(PlagueRaster)
+  DoSimulateResistance(rep=i)    # simulate for these params... 
   
-  ################
-  # MAKE PLOTS
-  
-  width = 500
-  height= 500
-  
-      # abundance figure
-  setwd(FIGS_DIR)
-    file = sprintf("AbundanceFig_year%03d.tif",t)
-    tiff(file, width=width,height=height)
-    plot(patchRaster,col=gray(0.7),legend=F)
-     #col = colorRampPalette(c("red","red"))(1)
-    col = rgb(0,seq(0,1,length=10),0)
-    plot(reclassify(DensRaster,rcl=c(-Inf,5,NA)),add=T,legend=T)
-    #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
-    #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
-  dev.off()
-
-  #     # evolution figure 1
-  # setwd(FIGS_DIR)
-  #   file = sprintf("Gene1FreqFig_year%03d.tif",t)
-  #   tiff(file, width=width,height=height)
-  #   plot(patchRaster,col=gray(0.7),legend=F)
-  #   #col = colorRampPalette(c("red","red"))(1)
-  #   col = rgb(0,seq(0,maxValue(FreqList[["gene1"]]),length=10),0)
-  #   plot(reclassify(FreqList[["gene1"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
-  #   #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
-  #   #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
-  # dev.off()  
-  
-  # evolution figure 1
-  setwd(FIGS_DIR)
-    file = sprintf("AllGenesFreqFig_year%03d.tif",t)
-    tiff(file, width=width*1.5,height=height)
-    par(mfrow=c(1,2))
-    plot(patchRaster,col=gray(0.7),legend=F,main="Gene 1")
-    #col = colorRampPalette(c("red","red"))(1)
-    col = rgb(0,seq(0,maxValue(FreqList[["gene1"]]),length=10),0)
-    plot(reclassify(FreqList[["gene1"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
-    
-    plot(patchRaster,col=gray(0.7),legend=F,main="Gene 2")
-    #col = colorRampPalette(c("red","red"))(1)
-    col = rgb(0,seq(0,maxValue(FreqList[["gene2"]]),length=10),0)
-    plot(reclassify(FreqList[["gene2"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
-    #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
-    #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
-  dev.off() 
-  
-  # # allgenes evolution figure
-  # setwd(FIGS_DIR)
-  #   file = sprintf("Gene2FreqFig_year%03d.tif",t)
-  #   tiff(file, width=width,height=height)
-  #   plot(patchRaster,col=gray(0.7),legend=F)
-  #   #col = colorRampPalette(c("red","red"))(1)
-  #   col = rgb(0,seq(0,maxValue(FreqList[["gene2"]]),length=10),0)
-  #   plot(reclassify(FreqList[["gene2"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
-  #   #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
-  #   #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
-  # dev.off()
-  
-    # plague figure
-  setwd(FIGS_DIR)
-  file = sprintf("PlagueFig_year%03d.tif",t)
-  tiff(file, width=width,height=height)
-  plot(patchRaster,col=gray(0.7),legend=F)
-  #col = colorRampPalette(c("red","red"))(1)
-  col = rgb(seq(0,maxValue(PlagueRaster),length=10),0,0)
-  plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),add=T,col=col,legend=T)
-  #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
-  #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
-  dev.off()
-  
-  
-  #gray.colors(10)
-  
-  # setwd(FIGS_DIR)
-  # date <- Sys.Date()
-  # for(i in rasterNames){
-  #   filename = sprintf("%s_time%s_%s.tif",i,t,date)
-  #   thisRaster <- eval(parse(text=i))
-  #   writeRaster(thisRaster,filename=filename,format='GTiff',overwrite=T)
-  # }
-  
-  # test <- raster(filename)
-  # plot(test)
-   
-}
-
-
-###############
-# MAKE MOVIE   (need ffmpeg and imagemagick installed)
-###############
-
-## NOTE: need command line like this: ffmpeg -f image2 -framerate 2 -i AbundanceFig_year%03d.tif -s 500x500 test.avi -y
-
-# MAKING THE REAL MOVIE HERE! USE IMAGE MAGICK AND FFMPEG SOFTWARE  (https://blogazonia.wordpress.com/2016/01/19/making-a-movie-with-r/)
-
-
-# create the movie
-cmd_abundmov <- paste0("ffmpeg -f image2 -framerate 2 -i AbundanceFig_year%03d.tif -s 500x500 ", 
-                       sprintf("%s\\AbundanceMovie.avi",MOVIE_DIR)," -y")
-
-cmd_evolutionmov <- paste0("ffmpeg -f image2 -framerate 2 -i AllGenesFreqFig_year%03d.tif -s 800x500 ", 
-                       sprintf("%s\\EvolutionMovie.avi",MOVIE_DIR)," -y")
-
-cmd_plaguemov <- paste0("ffmpeg -f image2 -framerate 2 -i PlagueFig_year%03d.tif -s 500x500 ", 
-                           sprintf("%s\\PlagueMovie.avi",MOVIE_DIR)," -y")
-
-system(cmd_abundmov)
-
-system(cmd_evolutionmov)
-
-system(cmd_plaguemov)
-
-
-
-
-library(animation)
-
-
-setwd(FIGS_DIR)
-saveGIF(movie.name = "abundanceMovie.gif", img.name = "AbundanceFig_year", convert = "convert",
-          clean = FALSE)
-
-
-saveVideo({
-  par(mar = c(3, 3, 1, 0.5), mgp = c(2, 0.5, 0), tcl = -0.3, cex.axis = 0.8,
-      cex.lab = 0.8, cex.main = 1)
-  ani.options(interval = 0.05, nmax = 300)
-  brownian.motion(pch = 21, cex = 5, col = "red", bg = "yellow")
-}, video.name = "BM.mp4", other.opts = "-pix_fmt yuv420p -b 300k")
-# higher bitrate, better quality
-
-oopts = if (.Platform$OS.type == "windows") {
-  ani.options(ffmpeg = "C:\\FFMPEG\\bin\\ffmpeg.exe")
-}
-
-
-
+}     ## end parallel for loop
 
 
 

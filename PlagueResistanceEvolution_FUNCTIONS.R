@@ -3,6 +3,545 @@
 ########################
 
 
+
+#######################
+# DoSimulateResistance
+#######################
+
+
+DoSimulateResistance <- function(rep=1){
+  #plot(PlagueRaster)
+  
+ 
+  ############
+  ## USER-DEFINED VARIABLES
+  ############
+  
+  dmat <- list()
+  dmat[[1]] <- matrix(c(1,0,0, 1,0,0), nrow=2,ncol=3,byrow = T)
+  dmat[[2]] <- matrix(c(1,1,0, 1,0,0), nrow=2,ncol=3,byrow = T)
+  dmat[[3]] <- matrix(c(1,0,0, 1,1,0), nrow=2,ncol=3,byrow = T)
+  dmat[[4]] <- matrix(c(1,1,0, 1,1,0), nrow=2,ncol=3,byrow = T)
+  
+  UserParams <- DefineUserParams(PER_SUITABLE=masterDF$PER_SUITABLE[rep],SNUGGLE=masterDF$SNUGGLE[rep],NFOCI=1,MAXDISPERSAL=500,BASELINE_DISPERSAL=0.05,
+                                 MAXDISPERSAL_PLAGUE = 1000,PLAGUE_DISPERSAL=masterDF$PLAGUE_DISPERSAL[rep], MAXDENS = masterDF$MAXDENS[rep],
+                                 MINDENS = 15, BASELINE_MEANSURV = 0.6, BASELINE_PLAGUESURV=masterDF$BASELINE_PLAGUESURV[rep],
+                                 BASELINE_PLAGUESURV_RESIST=0.5,BASELINE_MEANFEC=masterDF$BASELINE_MEANFEC[rep],
+                                 FITNESS_COST=rep(masterDF$FITNESS_COST[rep],2),INITFREQ=rep(masterDF$INITFREQ[rep],2),DOMINANCE=dmat[[masterDF$DOMINANCE[rep]]])
+  
+  assign(x="UserParams",value=UserParams, envir = .GlobalEnv)
+  
+  DoInitialization()
+  
+  ####################
+  # START LOOP THROUGH YEARS
+  ####################
+  
+  
+  # names of important raster maps to save to file etc...
+  #rasterNames  <- c("PopArray","NextPlagueSurvRaster","NextNormalSurvRaster","PlagueResistancePotentialRaster")   # Deprecate?
+  
+  
+  # t=which(plagueyear)[1]
+  t=0
+  t=t+1
+  for(t in 1:(NYEARS)){
+    deviate <- rnorm(1)   #determine if this is a good year or a bad year (for now, survival and fecundity are perfectly correlated)
+    assign(x="deviate",value=deviate, envir = .GlobalEnv)
+    
+    cv=UserParams$Popbio$CV_SURVIVAL   # set up for using the getYearVariate function
+    assign(x="cv",value=cv, envir = .GlobalEnv)
+    
+    if(t==1){ 
+      FreqList=InitFreqList; DensRaster=InitDensRaster; newFociRaster <- reclassify(DensRaster,rcl=c(-Inf,Inf,0))     # initial conditions
+      assign(x="FreqList",value=FreqList, envir = .GlobalEnv)
+      assign(x="DensRaster",value=DensRaster, envir = .GlobalEnv)
+      assign(x="newFociRaster",value=newFociRaster, envir = .GlobalEnv)
+    }
+    
+    ##################
+    # DENSITY INDEPENDENT SURVIVAL (including plague survival)
+    ##################
+    
+    #PopArray <- GetStructuredPop(DensRaster)
+    
+    DensRaster <- doSurvival(DensRaster,PlagueRaster,FreqList)
+    assign(x="DensRaster",value=DensRaster, envir = .GlobalEnv)
+    # plot(DensRaster)
+    # plot(FreqList[["gene1"]])
+    
+    ################
+    # REPRODUCTION
+    ################
+    
+    DensRaster <- doReproduce(DensRaster,PlagueRaster)    # TODO: make specific to each resistance type...?
+    assign(x="DensRaster",value=DensRaster, envir = .GlobalEnv)
+    # plot(DensRaster)
+    # plot(FreqList[["gene1"]])
+    
+    ###############
+    # DISPERSAL: Move individuals around the landscape (this takes a while!)
+    ###############
+    DensRaster <- doDispersal(PlagueRaster)
+    assign(x="DensRaster",value=DensRaster, envir = .GlobalEnv)
+    
+    # plot(DensRaster)    # good in t=1, not so much in t=2
+    # plot(FreqList[["gene2"]])
+    
+    ###############
+    # ALLEE EFFECT: REMOVE POPULATIONS BELOW A MINIMUM ABUNDANCE THRESHOLD
+    ###############
+    #PopArray <- doAllee()
+    #if(MINABUND>0) PopArray <- doAllee()   # don't need this! all low-dens individuals move out anyway...
+    # $
+    
+    ###############
+    # CLEAR excess individuals from cells (DD)
+    
+    DensRaster <- doDDSurvival(DensRaster)
+    assign(x="DensRaster",value=DensRaster, envir = .GlobalEnv)
+    
+    # plot(DensRaster) 
+    # plot(FreqList[["gene1"]])
+    
+    ##################
+    # PLAGUE PRESSURE
+    ##################
+    
+    PlagueRaster <- doPlague(PlagueRaster=PlagueRaster,DensRaster=DensRaster)
+    assign(x="DensRaster",value=DensRaster, envir = .GlobalEnv)
+    
+    # plot(PlagueRaster)
+    
+  
+    
+    
+    # # plot(PopArray)
+    # 
+    #   plot(PopArray)    # okay
+    #   plot(reclassify(NextNormalSurvRaster,rcl=c(NA,NA,0)))   # okay in t=1,2
+    #   plot(NextNormalSurvRaster)
+    #   plot(reclassify(NextPlagueSurvRaster,rcl=c(NA,NA,0)))    # okay t=1,2
+    #   
+    #   plot(newFociRaster)   # okay t=1
+    #   
+    #   plot(PlagueRaster)
+    
+    ###############
+    # MAKE PLOTS
+    ###############
+    
+    MakePlots(rep,t)
+    
+  }   # end loop through time
+  
+  ###############
+  # MAKE MOVIES
+  ###############
+  
+  MakeMovie(rep) 
+  
+}
+
+
+
+#######################
+# MAKE PLOTS
+#######################
+
+MakePlots <- function(rep,t){
+  ################
+  # MAKE PLOTS
+  
+  width = 500
+  height= 500
+  
+  thisFIGS_DIR <- sprintf("%s\\rep%04d",FIGS_DIR2,rep)
+  if(is.na(file.info(thisFIGS_DIR)[1,"isdir"])) dir.create(thisFIGS_DIR)
+  
+  # abundance figure
+  setwd(thisFIGS_DIR)
+  file = sprintf("AbundanceFig_year%03d.tif",t)
+  tiff(file, width=width,height=height)
+  plot(patchRaster,col=gray(0.7),legend=F)
+  #col = colorRampPalette(c("red","red"))(1)
+  col = rgb(0,seq(0,1,length=10),0)
+  plot(reclassify(DensRaster,rcl=c(-Inf,5,NA)),add=T,legend=T)
+  #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
+  #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
+  dev.off()
+  
+  # evolution figure 1
+  setwd(thisFIGS_DIR)
+  file = sprintf("AllGenesFreqFig_year%03d.tif",t)
+  tiff(file, width=width*1.5,height=height)
+  par(mfrow=c(1,2))
+  plot(patchRaster,col=gray(0.7),legend=F,main="Gene 1")
+  #col = colorRampPalette(c("red","red"))(1)
+  col = rgb(0,seq(0,maxValue(FreqList[["gene1"]]),length=10),0)
+  plot(reclassify(FreqList[["gene1"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
+  
+  plot(patchRaster,col=gray(0.7),legend=F,main="Gene 2")
+  #col = colorRampPalette(c("red","red"))(1)
+  col = rgb(0,seq(0,maxValue(FreqList[["gene2"]]),length=10),0)
+  plot(reclassify(FreqList[["gene2"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
+  #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
+  #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
+  dev.off() 
+
+  
+  # plague figure
+  setwd(thisFIGS_DIR)
+  file = sprintf("PlagueFig_year%03d.tif",t)
+  tiff(file, width=width,height=height)
+  plot(patchRaster,col=gray(0.7),legend=F)
+  #col = colorRampPalette(c("red","red"))(1)
+  col = rgb(seq(0,maxValue(PlagueRaster),length=10),0,0)
+  plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),add=T,col=col,legend=T)
+  #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
+  #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
+  dev.off()
+  
+  
+  #gray.colors(10)
+  
+}   
+
+###############
+# MAKE MOVIE   (need ffmpeg and imagemagick installed)
+###############
+
+
+MakeMovie <- function(rep){
+  thisMOVIE_DIR <- sprintf("%s\\rep%04d",MOVIE_DIR2,rep)
+  if(is.na(file.info(thisMOVIE_DIR)[1,"isdir"])) dir.create(thisMOVIE_DIR)
+  
+  thisFIGS_DIR <- sprintf("%s\\rep%04d",FIGS_DIR2,rep)
+  
+  setwd(thisFIGS_DIR)
+  ## NOTE: need command line like this: ffmpeg -f image2 -framerate 2 -i AbundanceFig_year%03d.tif -s 500x500 test.avi -y
+  
+  # MAKING THE REAL MOVIE HERE! USE IMAGE MAGICK AND FFMPEG SOFTWARE  (https://blogazonia.wordpress.com/2016/01/19/making-a-movie-with-r/)
+  
+  
+  # create the movie
+  cmd_abundmov <- paste0("ffmpeg -f image2 -framerate 2 -i AbundanceFig_year%03d.tif -s 500x500 ", 
+                         sprintf("%s\\AbundanceMovie.avi",thisMOVIE_DIR)," -y")
+  
+  cmd_evolutionmov <- paste0("ffmpeg -f image2 -framerate 2 -i AllGenesFreqFig_year%03d.tif -s 800x500 ", 
+                             sprintf("%s\\EvolutionMovie.avi",thisMOVIE_DIR)," -y")
+  
+  cmd_plaguemov <- paste0("ffmpeg -f image2 -framerate 2 -i PlagueFig_year%03d.tif -s 500x500 ", 
+                          sprintf("%s\\PlagueMovie.avi",thisMOVIE_DIR)," -y")
+  
+  #sink(tempfile())
+  system(cmd_abundmov,ignore.stdout = T,ignore.stderr = T)
+  
+  system(cmd_evolutionmov,ignore.stdout = T,ignore.stderr = T)
+  
+  system(cmd_plaguemov,ignore.stdout = T,ignore.stderr = T)
+  
+  #sink()
+}
+
+
+
+#######################
+# DO INITIALIZATION
+#######################
+
+DoInitialization <- function(){
+  #####################
+  # INITIALIZE DISPERSAL   (for both plague and no plague... )   
+  #####################
+  
+  InitializeDispersal()
+  
+  ########################
+  # INITIALIZE LANDSCAPE
+  ########################
+  
+  InitializeLandscape(solid=F)   # generate patchmaps etc.
+  
+  ########################
+  # GET PLAGUE MODEL
+  ########################
+  
+  suppressWarnings(  PlagueModel <- GetPlagueModel()  )  # for now, use fake plague model- will be a statistical model
+  assign(x="PlagueModel",value=PlagueModel, envir = .GlobalEnv)
+  
+  ########################
+  # INITIALIZE POPULATION
+  ########################
+  
+  InitDensRaster <- KRaster    # initialize abundance at carrying capacity
+  # plot(InitDensRaster)
+  assign(x="InitDensRaster",value=InitDensRaster, envir = .GlobalEnv)
+  
+  #######################
+  # INITIALIZE ALLELE FREQUENCIES / RESISTANCE FACTORS [keep for now- will be multiple genes in the model somehow]
+  #######################
+  # NOTE: Some regions are more likely to evolve faster because they have greater percentages of those genes that can confer resistance. 
+  
+  InitFreqList <- GetInitFreqs()
+  
+  assign(x="InitFreqList",value=InitFreqList, envir = .GlobalEnv)
+  
+  #####################
+  # INITIALIZE POPULATION
+  #####################
+  
+  
+  ### Code block for pop starting from small loci
+  
+  InitDensRaster2 <- reclassify(patchIDRaster,rcl=c(-Inf,Inf,0))    # for testing
+  ndx <- sample(which(!is.na(InitDensRaster2@data@values)),size=3)
+  InitDensRaster2[ndx] <- 1000   # initialize population in random locations
+  InitDensRaster <- InitDensRaster2
+  #PopArray2 <- InitDensRaster   # copy, for dispersal algorithm... 
+  
+  
+  PopArray <- GetStructuredPop(InitDensRaster)
+  assign(x="PopArray",value=PopArray, envir = .GlobalEnv)
+  #plot(PopArray)
+  
+  
+  ######################
+  # INITIALIZE PLAGUE PROCESS   [KTS: moving away from this and towards a purely statistical model]
+  ######################
+  #  for now, assume that plague hits at the patch level, and is a random process.
+  
+  # PROB_PLAGUE_YEAR <- 0.5 # probability that a plague event hits (landscape level?)   # for now, plague only hits one patch in a plague year
+  # 
+  # plagueyear = as.logical(rbinom(NYEARS,1,PROB_PLAGUE_YEAR))
+  # 
+  # plagueNow = floor(runif(NYEARS,1,nPatches+1)) * as.numeric(plagueyear)    ## which patch plagues out?
+  
+  PlagueRaster_template <- reclassify(patchIDRaster,rcl=c(-Inf,Inf,0))   
+  
+  PlagueRaster <- doPlague(PlagueRaster=PlagueRaster_template, DensRaster=reclassify(patchIDRaster,rcl=c(-Inf,Inf,0)))
+  assign(x="PlagueRaster",value=PlagueRaster, envir = .GlobalEnv)
+  
+  ###########
+  # SAVE VARS TO GLOBAL ENVIRONMENT
+  ###########
+  
+
+  
+  # plot(InitFreqList)
+  
+  # plot(patchRaster)
+  # plot(patchIDRaster)
+}
+
+
+
+
+###########
+## FUNCTION "loadPackage"
+##
+## GENERIC FUNCTION FOR INSTALLING/LOADING PACKAGES FROM CRAN
+##
+###########
+
+loadPackage <- function(pkg){
+  
+  if(pkg %in% rownames(installed.packages()) == FALSE) {suppressMessages(suppressWarnings(install.packages(pkg)))}
+  eval(parse(text=sprintf("suppressMessages(suppressWarnings(require(%s)))",pkg)), envir= .GlobalEnv)
+  
+}
+
+###########
+## FUNCTION "loadPackage"
+##
+## GENERIC FUNCTION FOR INSTALLING/LOADING SOURCE CODE FROM GITHUB
+##
+###########
+
+source_github <- function(baseurl,scriptname) {
+  # load package
+  suppressMessages(suppressWarnings(require(RCurl)))
+  
+  # read script lines from website
+  url <- sprintf("%s%s",baseurl,scriptname)
+  script <- getURL(url, ssl.verifypeer = FALSE)
+  
+  script <- gsub("\r\n", "\n", script)     # get rid of carriage returns (not sure why this is necessary...)
+  
+  # parse lines and evaluate in the global environement
+  eval(parse(text = script), envir= .GlobalEnv)
+}
+
+
+
+##########
+## SET UP WORKSPACE
+##########
+
+
+
+SetUpWorkspace <- function(){
+  if(KEVIN_LAPTOP) BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
+  if(KEVIN_OFFICEPC) BASE_DIR <- "E:\\Dropbox\\PlagueModeling\\ResistanceEvolution"
+
+  if(KEVIN_OFFICEPC) BASE_DIR2 <- "E:\\ResistanceEvolution"
+  
+  assign(x="BASE_DIR",value=BASE_DIR, envir = .GlobalEnv)
+  assign(x="BASE_DIR2",value=BASE_DIR2, envir = .GlobalEnv)
+  
+  
+  ############
+  ## SET UP WORKSPACE (define global variables)
+  ############
+  
+  # RSCRIPT_DIR <- sprintf("%s\\Rscripts",GIT_DIR)
+  DATA_DIR <- sprintf("%s\\Data",BASE_DIR)
+  if(is.na(file.info(DATA_DIR)[1,"isdir"])) dir.create(DATA_DIR)
+  assign(x="DATA_DIR",value=DATA_DIR, envir = .GlobalEnv)
+  
+  FIGS_DIR <- sprintf("%s\\RawFigs",BASE_DIR)
+  if(is.na(file.info(FIGS_DIR)[1,"isdir"])) dir.create(FIGS_DIR)
+  assign(x="FIGS_DIR",value=FIGS_DIR, envir = .GlobalEnv)
+  
+  FIGS_DIR2 <- sprintf("%s\\RawFigs",BASE_DIR2)
+  if(is.na(file.info(FIGS_DIR2)[1,"isdir"])) dir.create(FIGS_DIR2)
+  assign(x="FIGS_DIR2",value=FIGS_DIR2, envir = .GlobalEnv)
+  
+  MOVIE_DIR <- sprintf("%s\\Movies",BASE_DIR)
+  if(is.na(file.info(MOVIE_DIR)[1,"isdir"])) dir.create(MOVIE_DIR)
+  assign(x="MOVIE_DIR",value=MOVIE_DIR, envir = .GlobalEnv)
+  
+  MOVIE_DIR2 <- sprintf("%s\\Movies",BASE_DIR2)
+  if(is.na(file.info(MOVIE_DIR2)[1,"isdir"])) dir.create(MOVIE_DIR2)
+  assign(x="MOVIE_DIR2",value=MOVIE_DIR2, envir = .GlobalEnv)
+  
+  setwd(DATA_DIR)
+  
+  LoadPackages()  # load all packages
+  
+
+}
+
+
+#################
+# LOAD PACKAGES
+#################
+
+
+LoadPackages <- function(){
+  #############################
+  #  LOAD PACKAGES
+  #############################
+  loadPackage("raster")           # note: loadPackage should install the package from CRAN automatically if it is not already installed
+  loadPackage("secr")
+  loadPackage("igraph")
+  loadPackage("parallel")
+  loadPackage("doParallel")
+  loadPackage("RCurl")
+  loadPackage("lhs")
+  
+}
+
+
+
+###########
+## FUNCTION "specifyLHSParam"
+##
+## Information necessary to translate standard uniform LHS sample into parameters of interest for paleo project 
+###########
+
+specifyLHSParam <- function(paramslist,name,type,lb,ub){
+  newlist <- paramslist
+  eval(parse(text=sprintf("newlist$%s <- list()",name)))
+  eval(parse(text=sprintf("newlist$%s$type <- \"%s\"",name,type)))
+  eval(parse(text=sprintf("newlist$%s$lb <- %s",name,lb)))
+  eval(parse(text=sprintf("newlist$%s$ub <- %s",name,ub))) 	
+  return(newlist)
+}
+
+
+###########
+## FUNCTION "MakeLHSSamples"
+##
+## Samples from the uniform LHS and translates into desired parameter space
+##  Returns a master data frame that will specify all MP files to be run
+###########
+
+
+###############################
+#        SPECIFY PARAMETER RANGES
+################################
+
+# PER_SUITABLE=0.4,SNUGGLE=0.75,MAXDISPERSAL=500,BASELINE_DISPERSAL=0.05,
+# MAXDISPERSAL_PLAGUE = 1000,PLAGUE_DISPERSAL=0.95, MAXDENS = 100,
+# MINDENS = 15, BASELINE_MEANSURV = 0.6, BASELINE_PLAGUESURV=0.05,
+# BASELINE_PLAGUESURV_RESIST=0.5,BASELINE_MEANFEC=3.2,
+# FITNESS_COST=c(0.1,0.05),INITFREQ=c(0.09,0.1),DOMINANCE=dmat
+
+MakeLHSSamples <- function(nicheBreadthDir,NicheBreadth){
+  
+  LHSParms <- list()    # initialize the container for parameter bounds
+  
+  ####  PER_SUITABLE
+  LHSParms <- specifyLHSParam(LHSParms,"PER_SUITABLE",type="CONT",lb=0.1,ub=1)
+  
+  #### SNUGGLE
+  LHSParms <- specifyLHSParam(LHSParms,"SNUGGLE",type="CONT",lb=0.01,ub=0.99)
+  
+  ### PLAGUE_DISPERSAL    0 to 100 individuals...  
+  LHSParms <- specifyLHSParam(LHSParms,"PLAGUE_DISPERSAL",type="CONT",lb=0.05,ub=0.99)       
+  
+  ### MAXDENS
+  LHSParms <- specifyLHSParam(LHSParms,"MAXDENS",type="INT",lb=25,ub=150)       
+  
+  ### BASELINE_PLAGUESURV
+  LHSParms <- specifyLHSParam(LHSParms,"BASELINE_PLAGUESURV",type="CONT",lb=0.01,ub=0.1)
+  
+  ### BASELINE_MEANFEC
+  LHSParms <- specifyLHSParam(LHSParms,"BASELINE_MEANFEC",type="CONT",lb=2.5,ub=6) 
+  
+  ### FITNESS_COST 
+  LHSParms <- specifyLHSParam(LHSParms,"FITNESS_COST",type="CONT",lb=0.01,ub=0.25)
+  
+  ### INITFREQ
+  LHSParms <- specifyLHSParam(LHSParms,"INITFREQ",type="CONT",lb=0.01,ub=0.25)
+  
+  #### DOMINANCE
+  LHSParms <- specifyLHSParam(LHSParms,"DOMINANCE",type="CAT",lb=0,ub=4)    
+  
+  ##################
+  ##### GENERATE LATIN HYPERCUBE SAMPLE
+  
+  nVars <- length(names(LHSParms))  
+  
+  LHS <- randomLHS(N_LHS_SAMPLES, nVars)   # generate multiple samples from parameter space according to a LHS sampling scheme
+  
+  masterDF <- as.data.frame(LHS)    #  storage container (data frame) to record relevant details for each MP file. Rows:MP file/LHS samples. Cols: relevant variables
+  
+  
+  ### translate raw lhs samples into desired parameter space
+  colnames(masterDF) <- names(LHSParms)
+  parm=1
+  for(parm in 1:nVars){
+    if(LHSParms[[parm]]$type=="CONT"){
+      masterDF[,parm] <- LHSParms[[parm]]$lb + LHS[,parm]*(LHSParms[[parm]]$ub-LHSParms[[parm]]$lb)
+    }
+    if(LHSParms[[parm]]$type=="CAT"){
+      masterDF[,parm] <- ceiling(LHSParms[[parm]]$lb + LHS[,parm]*(LHSParms[[parm]]$ub-LHSParms[[parm]]$lb))
+    }
+    if(LHSParms[[parm]]$type=="INT"){
+      masterDF[,parm] <- round(LHSParms[[parm]]$lb + LHS[,parm]*(LHSParms[[parm]]$ub-LHSParms[[parm]]$lb))
+    }
+  }
+  
+  setwd(DATA_DIR)
+  ## name file for LHS parameters 
+  write.csv(masterDF,sprintf("masterDF_prelim%s.csv",Sys.Date()),row.names=F)
+  
+  return(masterDF)
+}
+
+
 ###########
 ## DEFINE USER PARAMETERS
 ###########
@@ -10,7 +549,13 @@
 # This function defines a UserParams variable which is passed around and stores the user-defined parameters for the simulation. 
 #   Note that many of these parameters can also be subject to global sensitivity analysis.
 
-DefineUserParams <- function(){
+dmat <- matrix(c(1,1,0, 1,0,0), nrow=2,ncol=3,byrow = T)
+
+DefineUserParams <- function(PER_SUITABLE=0.4,SNUGGLE=0.75,NFOCI=1,MAXDISPERSAL=500,BASELINE_DISPERSAL=0.05,
+                             MAXDISPERSAL_PLAGUE = 1000,PLAGUE_DISPERSAL=0.95, MAXDENS = 100,
+                             MINDENS = 15, BASELINE_MEANSURV = 0.6, BASELINE_PLAGUESURV=0.05,
+                             BASELINE_PLAGUESURV_RESIST=0.5,BASELINE_MEANFEC=3.2,
+                             FITNESS_COST=c(0.1,0.05),INITFREQ=c(0.09,0.1),DOMINANCE=dmat){
     
   ############
   ## DEFINE RANGE OF POSSIBLE SCENARIOS  [not implemented yet]
@@ -44,7 +589,7 @@ DefineUserParams <- function(){
   
   
   # define the percent of the landscape that is suitable
-  UserParams[["Landscape"]]$PER_SUITABLE <- 0.4
+  UserParams[["Landscape"]]$PER_SUITABLE <- PER_SUITABLE
   
   #########
   # defining the species biology:
@@ -55,25 +600,25 @@ DefineUserParams <- function(){
   
   # define the clustering (degree to which species prefers to establish residence near members of its own kind)
   # 1 is complete tendency to cluster in space. 0 is agnostic to members of its own kind. -1 is tendency to avoid members of its own kind
-  UserParams[["Dispersal"]]$SNUGGLE <- 0.75
+  UserParams[["Dispersal"]]$SNUGGLE <- SNUGGLE
   
   # maximum annual dispersal distance (m)  
-  UserParams[["Dispersal"]]$MAXDISPERSAL_M <- 500
+  UserParams[["Dispersal"]]$MAXDISPERSAL_M <- MAXDISPERSAL
   
   # number of colony foci to establish (within the dispersal range) after colonies get below the low-density threshold
-  UserParams[["Dispersal"]]$NFOCI <- 1
+  UserParams[["Dispersal"]]$NFOCI <- NFOCI
   
   # rate of transmission (per-disperser probability of initiating an outbreak in recipient population) (under optimal plague conditions?)
   #UserParams[["Dispersal"]]$PROB_TRANSMISSION <- 0  # [not implemented yet...] [maybe don't need...] [but critical if looking at tradeoffs]
   
   # dispersal rate (independent of density)
-  UserParams[["Dispersal"]]$BASELINE_DISPERSAL <- 0.05
+  UserParams[["Dispersal"]]$BASELINE_DISPERSAL <- BASELINE_DISPERSAL
   
   # dispersal distance (m) for plagued-out populations
-  UserParams[["Dispersal"]]$MAXDISPERSAL_PLAGUE <- 1000   # individuals from plagued-out populations might move farther than normal population
+  UserParams[["Dispersal"]]$MAXDISPERSAL_PLAGUE <-  MAXDISPERSAL_PLAGUE   # individuals from plagued-out populations might move farther than normal population
   
   # dispersal rate for plagued-out populations
-  UserParams[["Dispersal"]]$PLAGUE_DISPERSAL <- 0.95     # individuals from plagued-out populations might have a higher tendency to move than normal populations- this can affect the spread of plague and the spread of plague resistance genes... 
+  UserParams[["Dispersal"]]$PLAGUE_DISPERSAL <- PLAGUE_DISPERSAL     # individuals from plagued-out populations might have a higher tendency to move than normal populations- this can affect the spread of plague and the spread of plague resistance genes... 
   
   
   
@@ -81,27 +626,27 @@ DefineUserParams <- function(){
   UserParams[["Popbio"]] <- list()
   
   # define the maximum per-cell number of individuals
-  UserParams[["Popbio"]]$MAXDENS_HA <- 100
+  UserParams[["Popbio"]]$MAXDENS_HA <- MAXDENS
   UserParams[["Popbio"]]$MAXABUND <- UserParams[["Popbio"]]$MAXDENS_HA *UserParams[["Landscape"]]$CELLAREA_HA
   
   # define the minimum per-cell number of individuals (provide a simple hard Allee effect)
-  UserParams[["Popbio"]]$MINDENS_HA <- 15
+  UserParams[["Popbio"]]$MINDENS_HA <- MINDENS
   UserParams[["Popbio"]]$MINABUND <- UserParams[["Popbio"]]$MINDENS_HA*UserParams[["Landscape"]]$CELLAREA_HA
   
   # maximum survival under plague (limit to resistance)
   #   RESISTANCE_LIMIT <- 0.75   # deprecated  
   
   # baseline survival in a non_plague year (baseline survival for a naive population under no plague)
-  UserParams[["Popbio"]]$BASELINE_MEANSURV <- 0.6
+  UserParams[["Popbio"]]$BASELINE_MEANSURV <- BASELINE_MEANSURV
   
   # Variation in survival among years, expressed as CV
   UserParams[["Popbio"]]$CV_SURVIVAL <- 0.2 
   
   # minimum survival under plague (completely naive population)
-  UserParams[["Popbio"]]$BASELINE_PLAGUESURV <- 0.05
+  UserParams[["Popbio"]]$BASELINE_PLAGUESURV <- BASELINE_PLAGUESURV
   
   # survival under plague for resistant individuals
-  UserParams[["Popbio"]]$BASELINE_PLAGUESURV_RESIST <- 0.5
+  UserParams[["Popbio"]]$BASELINE_PLAGUESURV_RESIST <- BASELINE_PLAGUESURV_RESIST
   
   # minimum survival for non-plague populations
   UserParams[["Popbio"]]$SURVMIN_NOPLAGUE <- 0.1
@@ -117,7 +662,7 @@ DefineUserParams <- function(){
   
   
   # fecundity in a non-plague year (baseline, number of offspring per adult, not sex structured)
-  UserParams[["Popbio"]]$BASELINE_MEANFEC <- 3.2
+  UserParams[["Popbio"]]$BASELINE_MEANFEC <- BASELINE_MEANFEC
   
   # temporal variation in fecundity, expressed as a CV
   UserParams[["Popbio"]]$CV_FECUNDITY <- 0.5 
@@ -144,25 +689,25 @@ DefineUserParams <- function(){
   
   UserParams[["Genetics"]]$NWAYS_OF_GETTING <- 1   # ways of getting resistance
   UserParams[["Genetics"]]$RESISTANCE_SCENARIOS <- list()
-  UserParams[["Genetics"]]$RESISTANCE_SCENARIOS[[1]] <- c("factor1","factor2")   # for now, needs both factors! 
-  names(UserParams[["Genetics"]]$RESISTANCE_SCENARIOS[[1]]) <- c("AND","AND")   # names follow boolean conventions. In this case, both factors are required for resistance
+  UserParams[["Genetics"]]$RESISTANCE_SCENARIOS[[1]] <- c("factor1","factor2")   # for now, needs all factors! 
+  names(UserParams[["Genetics"]]$RESISTANCE_SCENARIOS[[1]]) <-c("AND","AND")   # names follow boolean conventions. In this case, both factors are required for resistance
   
   UserParams[["Genetics"]]$FITNESS_COST <- numeric(UserParams[["Genetics"]]$NGENES)
   
-  UserParams[["Genetics"]]$FITNESS_COST[1] <- 0.1     # fitness cost of the first gene
-  UserParams[["Genetics"]]$FITNESS_COST[1] <- 0.05     # fitness cost of the second gene
+  UserParams[["Genetics"]]$FITNESS_COST[1] <- FITNESS_COST[1]     # fitness cost of the first gene   0.1
+  UserParams[["Genetics"]]$FITNESS_COST[1] <- FITNESS_COST[2]     # fitness cost of the second gene   0.05
   
   UserParams[["Genetics"]]$INITFREQ <- numeric(UserParams[["Genetics"]]$NGENES)
-  UserParams[["Genetics"]]$INITFREQ[1] <- 0.09
-  UserParams[["Genetics"]]$INITFREQ[2] <- 0.1
+  UserParams[["Genetics"]]$INITFREQ[1] <- INITFREQ[1]  #0.09
+  UserParams[["Genetics"]]$INITFREQ[2] <- INITFREQ[2] #  0.1
   
   UserParams[["Genetics"]]$INITFREQ_SD <- 0.03     # degree of variation in initial frequency of resistance.
   
   temp <- matrix(0,nrow=UserParams[["Genetics"]]$NGENES,ncol=3)
   colnames(temp) <- c("2x(rr)","1x(rs)","0x(ss)")
   UserParams[["Genetics"]]$DOMINANCE <- temp
-  UserParams[["Genetics"]]$DOMINANCE[1,] <- c(1,1,0)   # dominant
-  UserParams[["Genetics"]]$DOMINANCE[2,] <- c(1,0,0)  # recessive
+  UserParams[["Genetics"]]$DOMINANCE[1,] <- DOMINANCE[1,]   # dominant
+  UserParams[["Genetics"]]$DOMINANCE[2,] <- DOMINANCE[2,]  # recessive
   
   return(UserParams)
 }
@@ -174,7 +719,7 @@ DefineUserParams <- function(){
 #
 # This function determines which populations currently have plague given statistical model)
 
-doPlague <- function(UserParams,PlagueRaster=PlagueRaster,DensRaster=DensRaster){ 
+doPlague <- function(PlagueRaster=PlagueRaster,DensRaster=DensRaster){ 
   
   nPlagueNeighbors <- focal(PlagueRaster, w=matrix(1, nc=UserParams$Dispersal$MAXDISPERSAL_CELLS, nr=UserParams$Dispersal$MAXDISPERSAL_CELLS),na.rm=T)
   
@@ -240,15 +785,15 @@ GetPlagueModel <- function(){
 #
 #  This function creates several structures useful for dispersal modeling
 
-InitializeDispersal <- function(UserParams){
+InitializeDispersal <- function(){
   
   UserParams$Dispersal$MAXDISPERSAL_CELLS <- floor(UserParams$Dispersal$MAXDISPERSAL_M/UserParams$Landscape$CELLWIDTH_M)
   UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE <- floor(UserParams$Dispersal$MAXDISPERSAL_PLAGUE/UserParams$Landscape$CELLWIDTH_M)
   UserParams$Dispersal$MAXDISPERSAL_M <- UserParams$Dispersal$MAXDISPERSAL_CELLS*UserParams$Landscape$CELLWIDTH_M
   UserParams$Dispersal$MAXDISPERSAL_PLAGUE <- UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE*UserParams$Landscape$CELLWIDTH_M
   
-  DispMask <<- list()
-  DispKernel <<- list()
+  DispMask <- list()
+  DispKernel <- list()
   i="noPlague"
   for(i in c("noPlague","plague")){
     if(i=="noPlague"){ maxdispcells = UserParams$Dispersal$MAXDISPERSAL_CELLS ; maxdisp = UserParams$Dispersal$MAXDISPERSAL_M} 
@@ -272,19 +817,19 @@ InitializeDispersal <- function(UserParams){
     }
     tempDispKernel <- tempDispMask   # for now, dispersal kernel is uniform    ; dispersal kernel defines where pdogs go if they lose a home colony
     #DispKernel_Plague <- DispMask_Plague
-    DispMask[[i]] <<- tempDispMask
-    DispKernel[[i]] <<- tempDispKernel
+    DispMask[[i]] <- tempDispMask
+    DispKernel[[i]] <- tempDispKernel
     
   }
   
   # set up structures for colony expansion- individuals move to neighboring cells first..   [note: for now, donuts obey only the non-plague max dispersal]
   
-  donuts <<- list()
+  donuts <- list()
   j="noPlague"
   for(j in c("noPlague","plague")){
     if(j=="noPlague"){ maxdispcells = UserParams$Dispersal$MAXDISPERSAL_CELLS ; maxdisp = UserParams$Dispersal$MAXDISPERSAL_M} 
     if(j=="plague") {maxdispcells = UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE ; maxdisp = UserParams$Dispersal$MAXDISPERSAL_PLAGUE}
-    donuts[[j]] <<- list()
+    donuts[[j]] <- list()
     donut_template <- matrix(0,nrow=((maxdispcells*2)+1),ncol=((maxdispcells*2)+1),byrow=T)
     newseq <- c(-maxdispcells:maxdispcells)
     
@@ -294,17 +839,23 @@ InitializeDispersal <- function(UserParams){
     i=1
     for(i in 1:maxdispcells){
       ndx <- which(abs(newseq)<(i+1))
-      donuts[[j]][[i]] <<- donut_template
-      donuts[[j]][[i]][ndx,ndx] <<- 1
-      donuts[[j]][[i]] <<- donuts[[j]][[i]] - donutsZero
+      donuts[[j]][[i]] <- donut_template
+      donuts[[j]][[i]][ndx,ndx] <- 1
+      donuts[[j]][[i]] <- donuts[[j]][[i]] - donutsZero
       #donuts[[i]] <- apply(donuts[[i]],c(1,2),function(t) ifelse(t==0,NA,t)) 
       donutsZero <- donuts[[j]][[i]] + donutsZero
     }
   }
   
-  donuts[[j]] <<- lapply(donuts[[j]],function(k) apply(k,c(1,2),function(t) ifelse(t==0,NA,t)))
+  donuts[[j]] <- lapply(donuts[[j]],function(k) apply(k,c(1,2),function(t) ifelse(t==0,NA,t)))
   
-  UserParams <<- UserParams   # save to global environment
+  #UserParams <- UserParams   # save to global environment
+  
+  
+  assign(x="donuts",value=donuts, envir = .GlobalEnv)
+  assign(x="DispMask",value=DispMask, envir = .GlobalEnv)
+  assign(x="DispKernel",value=DispKernel, envir = .GlobalEnv)
+  assign(x="UserParams",value=UserParams, envir = .GlobalEnv)
   
   # donuts[['noPlague']][[4]]
 }
@@ -324,7 +875,7 @@ InitializeLandscape <- function(solid=F){
   # plot(templateRaster)
   
   if(solid){
-    patchRaster <<- setValues(templateRaster,1) 
+    patchRaster <- setValues(templateRaster,1) 
   }else{
   
   # use utility function from secr package to initialize landscape... 
@@ -345,26 +896,28 @@ InitializeLandscape <- function(solid=F){
     
     #patchRaster <- templateRaster
     #patchvals <- as.vector(t(as.matrix(covariates(temppatches)$habitat)))
-    patchRaster <<- setValues(templateRaster,values=covariates(temppatches)$habitat)
+    patchRaster <- setValues(templateRaster,values=covariates(temppatches)$habitat)
     
-    patchRaster <<- reclassify(patchRaster,rcl=c(-Inf,0.5,NA, 0.6,Inf,1))   # raster of habitat patches
+    patchRaster <- reclassify(patchRaster,rcl=c(-Inf,0.5,NA, 0.6,Inf,1))   # raster of habitat patches
     # plot(patchRaster) 
   }
+  
+  #browser()
   # extend patch raster to go outside the landscape bounds to the max dispersal distance...
   maxdisp <- max(UserParams$Dispersal$MAXDISPERSAL_CELLS,UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE)
-  patchRaster <<- extend(patchRaster,maxdisp,value=NA)
+  patchRaster <- extend(patchRaster,maxdisp,value=NA)
   
   #patchMatrix <- as.matrix(newraster)    # matrix of habitat patches
   
-  KRaster <<- patchRaster * UserParams$Popbio$MAXDENS_HA     # matrix of carrying capacity
+  KRaster <- patchRaster * UserParams$Popbio$MAXDENS_HA     # matrix of carrying capacity
   # plot(KRaster)
   
-  patchIDRaster <<- clump(patchRaster,directions=4,gaps=F)   # determine unique ID for each patch... 
+  patchIDRaster <- clump(patchRaster,directions=4,gaps=F)   # determine unique ID for each patch... 
   # plot(patchIDRaster)
   
-  nPatches <<- cellStats(patchIDRaster,"max")   # number of patches in the landscape
+  nPatches <- cellStats(patchIDRaster,"max")   # number of patches in the landscape
   
-  nCells <<- ncell(patchRaster)
+  nCells <- ncell(patchRaster)
   
   # Data frame of coordinates for all non-na cells
   # focalCells <- which(!is.na(patchRaster@data@values))
@@ -381,7 +934,15 @@ InitializeLandscape <- function(solid=F){
   UserParams$Landscape$MAXY <- patchRaster@extent@ymax-UserParams$Landscape$HALFCELLWIDTH_M
   
   UserParams$Landscape$FULLEXTENT <- extent(UserParams$Landscape$MINX,UserParams$Landscape$MAXX,UserParams$Landscape$MINY,UserParams$Landscape$MAXY)
-  UserParams <<- UserParams  # save to global env
+  #UserParams <- UserParams  # save to global env
+  
+  assign(x="patchRaster",value=patchRaster, envir = .GlobalEnv)
+  assign(x="KRaster",value=KRaster, envir = .GlobalEnv)
+  assign(x="patchIDRaster",value=patchIDRaster, envir = .GlobalEnv)
+  assign(x="nPatches",value=nPatches, envir = .GlobalEnv)
+  assign(x="nCells",value=nCells, envir = .GlobalEnv)
+  assign(x="UserParams",value=UserParams, envir = .GlobalEnv)
+  
 }
 
 
@@ -461,8 +1022,12 @@ UpdateStack <- function(stack=newStack){
 
 
 GetDispersalRates <- function(plagueStatus="noPlague"){
-  if(plagueStatus=="noPlague") {maxdisp<<-UserParams$Dispersal$MAXDISPERSAL_M;disprate<<-UserParams$Dispersal$BASELINE_DISPERSAL;maxdispcells<<-UserParams$Dispersal$MAXDISPERSAL_CELLS}
-  if(plagueStatus=="plague") {maxdisp<<-UserParams$Dispersal$MAXDISPERSAL_PLAGUE;disprate<<-UserParams$Dispersal$PLAGUE_DISPERSAL;maxdispcells<<-UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE}
+  if(plagueStatus=="noPlague") {maxdisp<-UserParams$Dispersal$MAXDISPERSAL_M;disprate<-UserParams$Dispersal$BASELINE_DISPERSAL;maxdispcells<-UserParams$Dispersal$MAXDISPERSAL_CELLS}
+  if(plagueStatus=="plague") {maxdisp<-UserParams$Dispersal$MAXDISPERSAL_PLAGUE;disprate<-UserParams$Dispersal$PLAGUE_DISPERSAL;maxdispcells<-UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE}
+
+  assign(x="maxdisp",value=maxdisp, envir = .GlobalEnv) 
+  assign(x="disprate",value=disprate, envir = .GlobalEnv) 
+  assign(x="maxdispcells",value=maxdispcells, envir = .GlobalEnv) 
 }
 
 
@@ -709,7 +1274,7 @@ stayFunction <- function(x,y){
 ####################
 
 #t=which(plagueyear)[1]
-doDispersal <- function(UserParams,PlagueRaster=PlagueRaster){
+doDispersal <- function(PlagueRaster=PlagueRaster){
 
   # ## build up the results for dispersal
   # newStack <- stack(list(
@@ -836,7 +1401,7 @@ doDispersal <- function(UserParams,PlagueRaster=PlagueRaster){
       
       
     }
-    if(counter%%100==0) cat(sprintf("%s...",counter))
+    #if(counter%%100==0) cat(sprintf("%s...",counter))
     counter=counter+1
   }  # end loop through focal cells
   
@@ -917,7 +1482,7 @@ demographicStoch <- function(c){
   return(value)
 }
 
-doReproduce <- function(UserParams,DensRaster,PlagueRaster=PlagueRaster){
+doReproduce <- function(DensRaster=DensRaster,PlagueRaster=PlagueRaster){
   thisPop <- DensRaster
   #thisFec <- rnorm(1,BASELINE_MEANFEC,CV_FECUNDITY*BASELINE_MEANFEC)
   thisFec <- UserParams$Popbio$BASELINE_MEANFEC + (UserParams$Popbio$CV_FECUNDITY*UserParams$Popbio$BASELINE_MEANFEC)*deviate
@@ -1002,14 +1567,14 @@ getSurvival <- function(deviate=deviate,cv=cv,FCRaster=FCRaster){
 
      # note: maybe we should just break out poparray by resistance during the survival function... Otherwise just frequencies... 
      #     in that case, we need to update frequencies here too. This is where "enrichment" happens.
-doSurvival <- function(UserParams, DensRaster=InitDensRaster,PlagueRaster=PlagueRaster,Freqlist=FreqList){   # PopArray=PopArray
+doSurvival <- function(DensRaster=InitDensRaster,PlagueRaster=PlagueRaster,Freqlist=FreqList){   # PopArray=PopArray
   #thisPop <- getValues(PopArray)
   
   thisPop <- GetStructuredPop(DensRaster,FreqList)    # break out population into resistant and non-resistant (and account for resistance factors)
   
     # structuredFreq <- GetStructuredFreqList(DensRaster,FreqList)  # break out resistance factors into resistant and non-resistant 
   
-  FCRaster <- FitnessCost(FreqList=InitFreqList)      # compute fitness costs
+  FCRaster <- FitnessCost(FreqList=FreqList)      # compute fitness costs
   
   surv <- getSurvival(deviate,cv,FCRaster)    # get survival for all possible combinations of resistance and plague
   
@@ -1046,7 +1611,7 @@ doSurvival <- function(UserParams, DensRaster=InitDensRaster,PlagueRaster=Plague
 # DD SURVIVAL FUNCTION
 ##################
 
-doDDSurvival <- function(UserParams,DensRaster){
+doDDSurvival <- function(DensRaster){
   
   thisPop <- DensRaster
   #for(status in c("resistant","susceptible")){
@@ -1077,7 +1642,7 @@ doAllee <- function(){
 
 
 # this function takes gene frequencies and converts to "factor" frequencies...
-Gene2Factor <- function(UserParams, FreqList = InitFreqList){
+Gene2Factor <- function(FreqList = InitFreqList){
   newlist <- list()
   gene=1
   for(gene in 1:UserParams$Genetics$NGENES){
@@ -1091,7 +1656,7 @@ Gene2Factor <- function(UserParams, FreqList = InitFreqList){
 }
 
 # this function takes gene frequencies and abundances and converts to resistant freqs and susceptible freqs...
-StrFreqFunc <- function(UserParams,DensRaster=InitDensRaster,ResistRaster=ResistRaster,FreqList = InitFreqList){
+StrFreqFunc <- function(DensRaster=InitDensRaster,ResistRaster=ResistRaster,FreqList = InitFreqList){
   reslist <- list()
   suslist <- list()
   #  temp <- DensRaster*F
@@ -1135,10 +1700,10 @@ resistfunc <- function(ngenes=UserParams$Genetics$NGENES){      # this function 
 
 
 IsResistant <- function(DensRaster=InitDensRaster,FreqList=InitFreqList,fungen=resistfunc){
-  FactorList <- Gene2Factor(UserParams,FreqList)
+  FactorList <- Gene2Factor(FreqList)
   temp <- overlay(FactorList,fun=fungen(UserParams$Genetics$NGENES)) #round(InitDensRaster*InitFreq[["gene1"]])   # freq of resist for each grid cell
   ResistRaster <- overlay(DensRaster,temp,fun=function(x,y) x*y)      # numbers of resistant individuals in each grid cell
-  StrFreqFunc(UserParams,DensRaster,ResistRaster,FreqList) # returns "suslist" and "reslist" to global env
+  StrFreqFunc(DensRaster,ResistRaster,FreqList) # returns "suslist" and "reslist" to global env
   return(ResistRaster)
 }
 
@@ -1194,7 +1759,7 @@ GetUnstructuredPop <- function(PopArray=PopArray,FreqList=FreqList){
 #######################
 # NOTE: Some regions are more likely to evolve faster because they have greater percentages of those genes that can confer resistance. 
 
-GetInitFreqs <- function(UserParams){
+GetInitFreqs <- function(){
 
   InitFreqList <- list()
   
