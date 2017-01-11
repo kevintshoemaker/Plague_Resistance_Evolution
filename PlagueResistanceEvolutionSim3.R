@@ -19,7 +19,7 @@ rm(list=ls())
 ## SIMULATION CONTROLS
 ############
 
-NYEARS <- 25
+NYEARS <- 10
 
 ############
 ## SET GLOBAL VARS
@@ -43,14 +43,14 @@ source("PlagueResistanceEvolution_FUNCTIONS.R")
 ## SET UP WORKSPACE AND LOAD PACKAGES
 ############
 
-SetUpWorkspace()
+dirs <- SetUpDirectories()
 num_cores <- detectCores() - 1   # for setting up cluster... leave one core free for windows background processes?
 
 ############
 ## SAMPLE FROM LATIN HYPERCUBE
 ############
 
-N_LHS_SAMPLES <- 20
+N_LHS_SAMPLES <- 4
 
 masterDF <- MakeLHSSamples(nicheBreadthDir=dir,NicheBreadth)
 
@@ -73,10 +73,10 @@ registerDoParallel(cl=cl)    # make the cluster
 # 
 # packagelist <- c("secr","igraph","raster")
 
-allsamples <- foreach(i = 1: nrow(masterDF),
+allsamples <- foreach(i = 1: nrow(masterDF)
                       # .export=objectlist,
                       # .packages = packagelist,
-                      .errorhandling=c("pass")
+                      # .errorhandling=c("pass")
 ) %dopar% {   
   
   # #####################
@@ -99,14 +99,15 @@ allsamples <- foreach(i = 1: nrow(masterDF),
 }     ## end parallel for loop
 
 
+#MakeWorker(NYEARS, masterDF, dirs)(1)
 
 ###################
 # CLOSE CLUSTER
 ###################
 
-if(!is.null(parallelCluster)) {
-  parallel::stopCluster(parallelCluster)
-  parallelCluster <- c()
+if(!is.null(cl)) {
+  parallel::stopCluster(cl)
+  cl <- c()
 }
 
 

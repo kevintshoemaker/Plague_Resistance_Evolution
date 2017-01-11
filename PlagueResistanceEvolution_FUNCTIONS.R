@@ -13,16 +13,14 @@ MakeWorker <- function(NYEARS, masterDF, dirs){
   
   #library(raster)   # for now, load key packages (too much work to reference explicitly)
   
-  
-  
-  #SetUpWorkspace()  # first set up the workspace, make sure that all variables are loaded up, packages loaded, etc.
+
          # note: could me more efficient not to load packages, but just to reference the packages explicitly
              # actually that's not right- don't need that
   
   setwd(dirs$GIT_DIR)
   source("PlagueResistanceEvolution_FUNCTIONS.R")     # load necessary functions
   
-  LoadPackages(env=environment())
+  #LoadPackages(env=environment())   # maybe try to avoid loading packages, for better parallelization
   
  # thisEnvironment <- environment()  # need to be able to reference the worker environment
  
@@ -66,7 +64,6 @@ DoSimulateResistancePar <- function(rep=1){
   
   #assign(x="UserParams",value=UserParams, envir = env)
   
-  # browser()
   InitList <- DoInitialization(UserParams)  #BaseLandscape
   PlagueRaster <- InitList$PlagueRaster
   #PopArray <- InitList$PopArray
@@ -78,6 +75,9 @@ DoSimulateResistancePar <- function(rep=1){
   BaseLandscape <- InitList$BaseLandscape
   # UserParams <- get("UserParams",envir=env)
   # BaseLandscape <- get("BaseLandscape",envir=env)
+
+  ResultsList <- SetUpResults(NYEARS,UserParams)
+  
   ####################
   # START LOOP THROUGH YEARS
   ####################
@@ -88,8 +88,8 @@ DoSimulateResistancePar <- function(rep=1){
   
   
   # t=which(plagueyear)[1]
-  t=0
-  t=t+1
+  t<-0
+  t<-t+1
   for(t in 1:(NYEARS)){
     deviate <- rnorm(1)   #determine if this is a good year or a bad year (for now, survival and fecundity are perfectly correlated)
     #assign(x="deviate",value=deviate, envir = env)
@@ -98,7 +98,9 @@ DoSimulateResistancePar <- function(rep=1){
     #assign(x="cv",value=cv, envir = env)
     
     if(t==1){ 
-      FreqList=InitFreqList; DensRaster=InitDensRaster; newFociRaster <- raster::reclassify(DensRaster,rcl=c(-Inf,Inf,0))     # initial conditions
+      FreqList<-InitFreqList; 
+      DensRaster<-InitDensRaster; 
+      newFociRaster <- raster::reclassify(DensRaster,rcl=c(-Inf,Inf,0))     # initial conditions
       # assign(x="FreqList",value=FreqList, envir = env)
       # assign(x="DensRaster",value=DensRaster, envir = env)
       # assign(x="newFociRaster",value=newFociRaster, envir = env)
@@ -107,7 +109,7 @@ DoSimulateResistancePar <- function(rep=1){
     ##################
     # DENSITY INDEPENDENT SURVIVAL (including plague survival)
     ##################
-    temp <- doSurvival(DensRaster,PlagueRaster,FreqList,UserParams)  #env
+    temp <- doSurvival(DensRaster,PlagueRaster,FreqList,UserParams,BaseLandscape,deviate,cv)  #env
     DensRaster <- temp$NewDensRaster  
     FreqList <- temp$FreqList
     
@@ -120,7 +122,7 @@ DoSimulateResistancePar <- function(rep=1){
     # REPRODUCTION
     ################
     
-    DensRaster <- doReproduce(DensRaster,PlagueRaster,deviate)    # TODO: make specific to each resistance type...?
+    DensRaster <- doReproduce(UserParams,DensRaster,PlagueRaster,deviate)    # TODO: make specific to each resistance type...?
     #assign(x="DensRaster",value=DensRaster, envir = env)
     # plot(DensRaster)
     # plot(FreqList[["gene1"]])
@@ -128,7 +130,7 @@ DoSimulateResistancePar <- function(rep=1){
     ###############
     # DISPERSAL: Move individuals around the landscape (this takes a while!)
     ###############
-    temp <- doDispersal(PlagueRaster,UserParams,BaseLandscape,DispList,newFociRaster)
+    temp <- doDispersal(UserParams,DensRaster,PlagueRaster,newFociRaster,FreqList,BaseLandscape,DispList)
     DensRaster <- temp$newPop
     newFociRaster <- temp$newFociRaster
     FreqList <- temp$newFreqList
@@ -169,9 +171,9 @@ DoSimulateResistancePar <- function(rep=1){
     # # plot(PopArray)
     # 
     #   plot(PopArray)    # okay
-    #   plot(reclassify(NextNormalSurvRaster,rcl=c(NA,NA,0)))   # okay in t=1,2
+    #   plot(raster::reclassify(NextNormalSurvRaster,rcl=c(NA,NA,0)))   # okay in t=1,2
     #   plot(NextNormalSurvRaster)
-    #   plot(reclassify(NextPlagueSurvRaster,rcl=c(NA,NA,0)))    # okay t=1,2
+    #   plot(raster::reclassify(NextPlagueSurvRaster,rcl=c(NA,NA,0)))    # okay t=1,2
     #   
     #   plot(newFociRaster)   # okay t=1
     #   
@@ -183,6 +185,12 @@ DoSimulateResistancePar <- function(rep=1){
     
     MakePlots(rep,t,BaseLandscape,DensRaster,PlagueRaster,FreqList)
     
+    ###############
+    # STORE RESULTS
+    ###############
+    
+    ResultsList <- ComputeYearResults(ResultsList,DensRaster,FreqList,t)
+    
   }   # end loop through time
   
   ###############
@@ -191,9 +199,76 @@ DoSimulateResistancePar <- function(rep=1){
   
   MakeMovie(rep) 
   
+  ################
+  # FINAL RESULTS
+  ################
+  
+  ResultsList <- ComputeFinalResults(ResultsList,DensRaster,FreqList)
+  
+  setwd(dirs$RESULTS_DIR)
+  filename <- sprintf("Rep%s_results.RData",rep)
+  save(ResultsList,file = filename)
+  
 }  # end main function DoSimulateResistance
 
 
+#######################
+# SET UP RESULTS
+#######################
+
+SetUpResults <- function(NYEARS,UserParams){
+  results <- list()
+  
+  results$byYear <- list()
+  
+  results$byYear$totabund <- numeric(NYEARS)
+  results$byYear$resfreq <- array(0,dim=c(NYEARS,UserParams[["Genetics"]]$NGENES))
+  
+  results$finalfreq<-numeric(UserParams[["Genetics"]]$NGENES)
+  results$finalabund <- 0
+  
+  return(results)
+}
+
+######################
+# COMPUTE YEARLY RESULTS
+######################
+
+ComputeYearResults <- function(ResultsList,DensRaster,FreqList,year){
+  results <- ResultsList
+  
+  totabund <- raster::cellStats(DensRaster,stat='sum')
+  results$byYear$totabund[year] <- totabund
+  
+  ngenes <- ncol(results$byYear$resfreq)
+  
+  for(i in 1:ngenes){
+    freq <- raster::cellStats(FreqList[[i]],stat='mean')
+    results$byYear$resfreq[year,i] <- freq
+  }
+  
+  return(results)
+}
+
+######################
+# COMPUTE FINAL RESULTS
+######################
+
+ComputeFinalResults <- function(ResultsList,DensRaster,FreqList){
+  results <- ResultsList
+  
+  totabund <- raster::cellStats(DensRaster,stat='sum')
+  results$finalabund <- totabund
+  
+  ngenes <- ncol(results$byYear$resfreq)
+  
+  for(i in 1:ngenes){
+    freq <- raster::cellStats(FreqList[[i]],stat='mean')
+    results$finalfreq[i] <- freq
+  }
+  
+  return(results)
+}
 
 #######################
 # MAKE PLOTS
@@ -213,12 +288,12 @@ MakePlots <- function(rep,t,BaseLandscape,DensRaster,PlagueRaster,FreqList){
   setwd(thisFIGS_DIR)
   file = sprintf("AbundanceFig_year%03d.tif",t)
   tiff(file, width=width,height=height)
-  plot(BaseLandscape$patchRaster,col=gray(0.7),legend=F)
+  raster::plot(BaseLandscape$patchRaster,col=gray(0.7),legend=F)
   #col = colorRampPalette(c("red","red"))(1)
   col = rgb(0,seq(0,1,length=10),0)
-  plot(reclassify(DensRaster,rcl=c(-Inf,5,NA)),add=T,legend=T)
-  #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
-  #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
+  raster::plot(raster::reclassify(DensRaster,rcl=c(-Inf,5,NA)),add=T,legend=T)
+  #raster::plot(raster::reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
+  #raster::plot(raster::reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
   dev.off()
   
   # evolution figure 1
@@ -226,17 +301,17 @@ MakePlots <- function(rep,t,BaseLandscape,DensRaster,PlagueRaster,FreqList){
   file = sprintf("AllGenesFreqFig_year%03d.tif",t)
   tiff(file, width=width*1.5,height=height)
   par(mfrow=c(1,2))
-  plot(BaseLandscape$patchRaster,col=gray(0.7),legend=F,main="Gene 1")
+  raster::plot(BaseLandscape$patchRaster,col=gray(0.7),legend=F,main="Gene 1")
   #col = colorRampPalette(c("red","red"))(1)
-  col = rgb(0,seq(0,maxValue(FreqList[["gene1"]]),length=10),0)
-  plot(reclassify(FreqList[["gene1"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
+  col = rgb(0,seq(0,raster::maxValue(FreqList[["gene1"]]),length=10),0)
+  raster::plot(raster::reclassify(FreqList[["gene1"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
   
-  plot(BaseLandscape$patchRaster,col=gray(0.7),legend=F,main="Gene 2")
+  raster::plot(BaseLandscape$patchRaster,col=gray(0.7),legend=F,main="Gene 2")
   #col = colorRampPalette(c("red","red"))(1)
-  col = rgb(0,seq(0,maxValue(FreqList[["gene2"]]),length=10),0)
-  plot(reclassify(FreqList[["gene2"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
-  #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
-  #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
+  col = rgb(0,seq(0,raster::maxValue(FreqList[["gene2"]]),length=10),0)
+  raster::plot(raster::reclassify(FreqList[["gene2"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
+  #raster::plot(raster::reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
+  #raster::plot(raster::reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
   dev.off() 
 
   
@@ -244,12 +319,12 @@ MakePlots <- function(rep,t,BaseLandscape,DensRaster,PlagueRaster,FreqList){
   setwd(thisFIGS_DIR)
   file = sprintf("PlagueFig_year%03d.tif",t)
   tiff(file, width=width,height=height)
-  plot(BaseLandscape$patchRaster,col=gray(0.7),legend=F)
+  raster::plot(BaseLandscape$patchRaster,col=gray(0.7),legend=F)
   #col = colorRampPalette(c("red","red"))(1)
-  col = rgb(seq(0,maxValue(PlagueRaster),length=10),0,0)
-  plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),add=T,col=col,legend=T)
-  #plot(reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
-  #plot(reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
+  col = rgb(seq(0,raster::maxValue(PlagueRaster),length=10),0,0)
+  raster::plot(raster::reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),add=T,col=col,legend=T)
+  #raster::plot(raster::reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
+  #raster::plot(raster::reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
   dev.off()
   
   
@@ -330,7 +405,7 @@ DoInitialization <- function(UserParams){  # BaseLandscape
   ########################
   
   InitDensRaster <- BaseLandscape$KRaster    # initialize abundance at carrying capacity
-  # plot(InitDensRaster)
+  # raster::plot(InitDensRaster)
   
   
   #######################
@@ -348,7 +423,7 @@ DoInitialization <- function(UserParams){  # BaseLandscape
   
   ### Code block for pop starting from small loci
   
-  InitDensRaster2 <- reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,0))    # for testing
+  InitDensRaster2 <- raster::reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,0))    # for testing
   ndx <- sample(which(!is.na(InitDensRaster2@data@values)),size=3)
   InitDensRaster2[ndx] <- 1000   # initialize population in random locations
   InitDensRaster <- InitDensRaster2
@@ -357,7 +432,7 @@ DoInitialization <- function(UserParams){  # BaseLandscape
   
   # PopArray <- GetStructuredPop(InitDensRaster,InitFreqList,UserParams,env)
   # assign(x="PopArray",value=PopArray, envir = env)
-  #plot(PopArray)
+  #raster::plot(PopArray)
   
   
   ######################
@@ -371,11 +446,11 @@ DoInitialization <- function(UserParams){  # BaseLandscape
   # 
   # plagueNow = floor(runif(NYEARS,1,BaseLandscape$nPatches+1)) * as.numeric(plagueyear)    ## which patch plagues out?
   
-  PlagueRaster_template <- reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,0))   
+  PlagueRaster_template <- raster::reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,0))   
   
     #PlagueModel <- get("PlagueModel",envir=env)
   PlagueRaster <- doPlague(PlagueRaster=PlagueRaster_template, 
-                           DensRaster=reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,0)),UserParams,PlagueModel)
+                           DensRaster=raster::reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,0)),UserParams,PlagueModel)
   #assign(x="PlagueRaster",value=PlagueRaster, envir = env)
   
   init.list <- list()
@@ -400,10 +475,10 @@ DoInitialization <- function(UserParams){  # BaseLandscape
   
 
   
-  # plot(InitFreqList)
+  # raster::plot(InitFreqList)
   
-  # plot(BaseLandscape$patchRaster)
-  # plot(BaseLandscape$patchIDRaster)
+  # raster::plot(BaseLandscape$patchRaster)
+  # raster::plot(BaseLandscape$patchIDRaster)
 }
 
 
@@ -452,7 +527,7 @@ source_github <- function(baseurl,scriptname) {
 
 
 
-SetUpWorkspace <- function(env=.GlobalEnv){
+SetUpDirectories <- function(){
   
   dirs <- list()
   
@@ -490,15 +565,19 @@ SetUpWorkspace <- function(env=.GlobalEnv){
   dirs$MOVIE_DIR2 <- sprintf("%s\\Movies",dirs$BASE_DIR2)
   if(is.na(file.info(dirs$MOVIE_DIR2)[1,"isdir"])) dir.create(dirs$MOVIE_DIR2)
   #assign(x="MOVIE_DIR2",value=MOVIE_DIR2, envir = env)
-  
+
+  dirs$RESULTS_DIR <- sprintf("%s\\Results",dirs$BASE_DIR2)
+  if(is.na(file.info(dirs$RESULTS_DIR)[1,"isdir"])) dir.create(dirs$RESULTS_DIR)
+  #assign(x="MOVIE_DIR2",value=MOVIE_DIR2, envir = env)
+    
   dirs$GIT_DIR <- GIT_DIR
   
-  setwd(dirs$DATA_DIR)
+  #setwd(dirs$DATA_DIR)
   
-  assign(x="dirs",value=dirs, envir = env)
-  LoadPackages(env=environment())  # load all packages
+  #assign(x="dirs",value=dirs, envir = env)
+  #LoadPackages(env)  # load all packages
   
-
+  return(dirs)
 }
 
 
@@ -800,10 +879,10 @@ DefineUserParams <- function(PER_SUITABLE=0.4,SNUGGLE=0.75,NFOCI=1,MAXDISPERSAL=
 
 doPlague <- function(PlagueRaster=PlagueRaster,DensRaster=DensRaster,UserParams,PlagueModel){ 
   
-  nPlagueNeighbors <- focal(PlagueRaster, w=matrix(1, nc=UserParams$Dispersal$MAXDISPERSAL_CELLS, nr=UserParams$Dispersal$MAXDISPERSAL_CELLS),na.rm=T)
+  nPlagueNeighbors <- raster::focal(PlagueRaster, w=matrix(1, nc=UserParams$Dispersal$MAXDISPERSAL_CELLS, nr=UserParams$Dispersal$MAXDISPERSAL_CELLS),na.rm=T)
   
-  # plot(PlagueRaster)
-  # plot(nPlagueNeighbors)
+  # raster::plot(PlagueRaster)
+  # raster::plot(nPlagueNeighbors)
   
   newdf <- data.frame(
     dens = DensRaster@data@values,
@@ -816,11 +895,11 @@ doPlague <- function(PlagueRaster=PlagueRaster,DensRaster=DensRaster,UserParams,
   # )
   
   prob <- plogis(as.numeric(predict(PlagueModel,newdata=newdf)))
-  ProbRaster <- setValues(PlagueRaster,values=prob)
+  ProbRaster <- raster::setValues(PlagueRaster,values=prob)
   ndx <- !is.na(prob)
   prediction <- prob
   prediction[ndx] <- rbinom(length(which(ndx)),1,prediction[ndx])
-  PlagueRaster <- setValues(PlagueRaster,values=prediction)   # set the plagueraster according to the statistical model
+  PlagueRaster <- raster::setValues(PlagueRaster,values=prediction)   # set the plagueraster according to the statistical model
   return(PlagueRaster)
 }
 
@@ -842,8 +921,8 @@ GetPlagueModel <- function(){
   fakeplaguepops <- sample(c(0:5),faken,replace=T)
   fakeplagueprob <- plogis(INTERCEPT + BETADENS*fakedens + BETAPLAGUE*fakeplaguepops + INTERACTION*fakeplaguepops*fakedens)
   
-  # plot(fakeplagueprob~fakeplaguepops)
-  #plot(fakeplagueprob~fakedens)
+  # raster::plot(fakeplagueprob~fakeplaguepops)
+  #raster::plot(fakeplagueprob~fakedens)
   fakeplague <- rbinom(faken,1,fakeplagueprob)
   
   dataFrame <- data.frame(plague=fakeplague,dens=fakedens,plaguepops=fakeplaguepops)
@@ -867,7 +946,6 @@ GetPlagueModel <- function(){
 InitializeDispersal <- function(UserParams){   # env
   
   #UserParams <- get("UserParams",envir=env)
-  #browser()
   
   UserParams$Dispersal$MAXDISPERSAL_CELLS <- floor(UserParams$Dispersal$MAXDISPERSAL_M/UserParams$Landscape$CELLWIDTH_M)
   UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE <- floor(UserParams$Dispersal$MAXDISPERSAL_PLAGUE/UserParams$Landscape$CELLWIDTH_M)
@@ -959,13 +1037,13 @@ InitializeDispersal <- function(UserParams){   # env
 #  This function generates a fake landscape in which to model plague dynamics
 
 InitializeLandscape <- function(solid=F,UserParams){   #env
-  templateRaster <- raster(nrows=UserParams$Landscape$NROWS, ncols=UserParams$Landscape$NCOLS, xmn=0, 
+  templateRaster <- raster::raster(nrows=UserParams$Landscape$NROWS, ncols=UserParams$Landscape$NCOLS, xmn=0, 
                             xmx=UserParams$Landscape$CELLWIDTH_M*UserParams$Landscape$NROWS,ymn=0, 
                             ymx=UserParams$Landscape$CELLWIDTH_M*UserParams$Landscape$NCOLS,vals=NA)    # template raster
-  # plot(templateRaster)
+  # raster::plot(templateRaster)
   
   if(solid){
-    patchRaster <- setValues(templateRaster,1) 
+    patchRaster <- raster::setValues(templateRaster,1) 
   }else{
   
   # use utility function from secr package to initialize landscape... 
@@ -973,7 +1051,7 @@ InitializeLandscape <- function(solid=F,UserParams){   #env
                           detector = "single", originxy = c(0,0), hollow = F,
                           ID = "alphay")
     
-    # plot(tempgrid)  
+    # secr::plot(tempgrid)  
     
     tempmask <- secr::make.mask(traps=tempgrid, buffer = UserParams$Landscape$HALFCELLWIDTH_M, spacing = UserParams$Landscape$CELLWIDTH_M, 
                           nx = UserParams$Landscape$NCOLS, ny = UserParams$Landscape$NROWS, type =
@@ -984,36 +1062,34 @@ InitializeLandscape <- function(solid=F,UserParams){   #env
     temppatches <- secr::randomHabitat(mask=tempmask, p = 0.4, A = UserParams$Landscape$PER_SUITABLE, directions = 4, minpatch = 20,
                                  drop = FALSE, covname = "habitat", plt = FALSE)
     
-    #browser()
     #BaseLandscape$patchRaster <- templateRaster
     #patchvals <- as.vector(t(as.matrix(covariates(temppatches)$habitat)))
-    patchRaster <- setValues(templateRaster,values=covariates(temppatches)$habitat)
+    patchRaster <- raster::setValues(templateRaster,values=secr::covariates(temppatches)$habitat)
     
     patchRaster <- raster::reclassify(patchRaster,rcl=c(-Inf,0.5,NA, 0.6,Inf,1))   # raster of habitat patches
     # plot(patchRaster) 
   }
   
-  #browser()
   # extend patch raster to go outside the landscape bounds to the max dispersal distance...
   maxdisp <- max(UserParams$Dispersal$MAXDISPERSAL_CELLS,UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE)
-  patchRaster <- extend(patchRaster,maxdisp,value=NA)
+  patchRaster <- raster::extend(patchRaster,maxdisp,value=NA)
   
   #patchMatrix <- as.matrix(newraster)    # matrix of habitat patches
   
   KRaster <- patchRaster * UserParams$Popbio$MAXDENS_HA     # matrix of carrying capacity
   # plot(KRaster)
   
-  patchIDRaster <- clump(patchRaster,directions=4,gaps=F)   # determine unique ID for each patch... 
+  patchIDRaster <- raster::clump(patchRaster,directions=4,gaps=F)   # determine unique ID for each patch... 
   # plot(patchIDRaster)
   
-  nPatches <- cellStats(patchIDRaster,"max")   # number of patches in the landscape
+  nPatches <- raster::cellStats(patchIDRaster,"max")   # number of patches in the landscape
   
-  nCells <- ncell(patchRaster)
+  nCells <- raster::ncell(patchRaster)
   
   # Data frame of coordinates for all non-na cells
   # focalCells <- which(!is.na(patchRaster@data@values))
   # xy_df <- data.frame(
-  #   xyFromCell(patchRaster,focalCells)
+  #   raster::xyFromCell(patchRaster,focalCells)
   # )
   # 
   # head(xy_df)
@@ -1024,7 +1100,7 @@ InitializeLandscape <- function(solid=F,UserParams){   #env
   UserParams$Landscape$MINY <- patchRaster@extent@ymin+UserParams$Landscape$HALFCELLWIDTH_M
   UserParams$Landscape$MAXY <- patchRaster@extent@ymax-UserParams$Landscape$HALFCELLWIDTH_M
   
-  UserParams$Landscape$FULLEXTENT <- extent(UserParams$Landscape$MINX,UserParams$Landscape$MAXX,UserParams$Landscape$MINY,UserParams$Landscape$MAXY)
+  UserParams$Landscape$FULLEXTENT <- raster::extent(UserParams$Landscape$MINX,UserParams$Landscape$MAXX,UserParams$Landscape$MINY,UserParams$Landscape$MAXY)
   #UserParams <- UserParams  # save to global env
   
   BaseLandscape <- list(patchRaster = patchRaster,
@@ -1072,11 +1148,10 @@ InitializeLandscape <- function(solid=F,UserParams){   #env
 ###################
 # Add (or subtract) individuals from cells during dispersal phase
 
-UpdateAbund <- function(focalxy=xy, stack, df=toAdd_df){
-  #browser()
+UpdateAbund <- function(focalxy=xy, stack, df=toAdd_df,DensRaster,FreqList){
   newstack <- stack
-  focalndx <- cellFromXY(DensRaster,focalxy)
-  ndx <- cellFromXY(DensRaster,df[,c("x","y")])
+  focalndx <- raster::cellFromXY(DensRaster,focalxy)
+  ndx <- raster::cellFromXY(DensRaster,df[,c("x","y")])
   indiv <- df[,3]   # individuals to add
   names <- names(stack)
   i=names[2]
@@ -1110,7 +1185,7 @@ UpdateStack <- function(stack){  #env
       keep <- c(keep,i)
     }
   }
-  return <- subset(stack,subset=keep,drop=FALSE)
+  return <- raster::subset(stack,subset=keep,drop=FALSE)
   #assign(x="FreqList",value=return, envir = env)   # assign the variable to the global environment
   return(return)
 }
@@ -1143,15 +1218,16 @@ GetDispersalRates <- function(plagueStatus="noPlague",UserParams){
 # DEFINE THE NEIGHBORHOOD TO WHICH PDOGS COULD MOVE
 #############
 
-makeNeighborhoodRasters <- function(newStack,plagueStatus="noPlague",xy=xy,UserParams,DispList){
+makeNeighborhoodRasters <- function(newStack,plagueStatus,xy,UserParams,DispList){
   mask=DispList$DispMask[[plagueStatus]]
   kernel=DispList$DispKernel[[plagueStatus]]
   DispRates <- GetDispersalRates(plagueStatus,UserParams) # already done... 
-  neighborhood.extent <- extent(xy$x-DispRates$maxdisp-UserParams$Landscape$HALFCELLWIDTH_M,
+  neighborhood.extent <- raster::extent(xy$x-DispRates$maxdisp-UserParams$Landscape$HALFCELLWIDTH_M,
                                 xy$x+DispRates$maxdisp+UserParams$Landscape$HALFCELLWIDTH_M,
                                 xy$y-DispRates$maxdisp-UserParams$Landscape$HALFCELLWIDTH_M,
                                 xy$y+DispRates$maxdisp+UserParams$Landscape$HALFCELLWIDTH_M)
-  neighborhood_raster <- crop(newStack[["DensRaster"]],neighborhood.extent)    # possible cells to move to and from [TODO: change this to current status, not former]
+
+  neighborhood_raster <- raster::crop(newStack[["DensRaster"]],neighborhood.extent)    # possible cells to move to and from [TODO: change this to current status, not former]
   #neighborhood_raster <- neighborhood_raster - (neighborhood_raster*disprate) # make sure that there is space for incoming dispersers [revisit this]
   
   ################
@@ -1161,13 +1237,13 @@ makeNeighborhoodRasters <- function(newStack,plagueStatus="noPlague",xy=xy,UserP
   #vals[vals==0] <- NA
   #neighborhood_kernel_raster <- neighborhood_raster 
   length(vals)
-  ncell(neighborhood_raster)
-  neighborhood_mask_raster <- setValues(neighborhood_raster,values=vals)  # NOTE: this could be a dispersal kernel
+  raster::ncell(neighborhood_raster)
+  neighborhood_mask_raster <- raster::setValues(neighborhood_raster,values=vals)  # NOTE: this could be a dispersal kernel
   
   ###############
   # Make a neighborhood kernel
   vals <- as.vector(t(kernel))
-  neighborhood_kernel_raster <- setValues(neighborhood_raster,values=vals)
+  neighborhood_kernel_raster <- raster::setValues(neighborhood_raster,values=vals)
   
   #     plot(neighborhood_raster)
   #     plot(neighborhood_mask_raster)
@@ -1203,21 +1279,22 @@ makeNeighborhoodRasters <- function(newStack,plagueStatus="noPlague",xy=xy,UserP
 
 #names(neighborhoodRasters)
 
-SpreadOut <- function(newStack=newStack,leave_snuggle=leave_snuggle,
-                      plagueStatus=plagueStatus,
-                      xy=xy,
-                      neighborhood_raster=neighborhoodRasters[['abundRaster']],
-                      neighborhood_mask_raster=neighborhoodRasters[['maskRaster']],
-                      freeSpace_raster=neighborhoodRasters[['freeSpaceRaster']],UserParams,DispList){  # env
+SpreadOut <- function(newStack,DensRaster,FreqList,leave_snuggle,
+                      plagueStatus,
+                      xy,
+                      neighborhood_raster,
+                      neighborhood_mask_raster,
+                      freeSpace_raster,
+                      UserParams,
+                      DispList){  # env
   DispRates <- GetDispersalRates(plagueStatus,UserParams) 
   updatedStack <- newStack
   i=2
   #toAdd <- data.frame(x=numeric(0),y=numeric(0))
   for(i in 1:DispRates$maxdispcells){
-    donutraster <- setValues(neighborhood_raster,values=DispList$donuts[[plagueStatus]][[i]])
+    donutraster <- raster::setValues(neighborhood_raster,values=DispList$donuts[[plagueStatus]][[i]])
     # plot(donutraster)
     #tempmask <- raster::reclassify(neighborhood_raster,rcl=c(-Inf,Inf,1))  # NA,NA,0, 
-    #browser()
     donutraster <- donutraster*neighborhood_mask_raster  # all non-NA cells within the donut
     #         plot(donutraster+tempmask)
     #         plot(donutraster)
@@ -1232,15 +1309,15 @@ SpreadOut <- function(newStack=newStack,leave_snuggle=leave_snuggle,
     freeSpace <- temp@data@values[which(temp@data@values>0)]
     # if there is free space... then put individuals in that space... 
     if(length(freeSpace)>0){
-      toAdd_df <- as.data.frame(xyFromCell(temp,which(temp@data@values>0))) # cells with empty space to go    
+      toAdd_df <- as.data.frame(raster::xyFromCell(temp,which(temp@data@values>0))) # cells with empty space to go    
       # allocate those individuals 
       #toAdd_df$indiv <- 0
       toAdd <- min(sum(freeSpace),leave_snuggle)
       toAdd_df$indiv <- rmultinom(1,toAdd,prob=freeSpace)[,1]    # disperser individuals to add to each cell
       dispndx <- which(toAdd_df$indiv>0)
-      updatedStack <- UpdateAbund(focalxy=xy,stack=updatedStack,df=toAdd_df[dispndx,])  # add these disperser individuals and update the evolving factors
+      updatedStack <- UpdateAbund(focalxy=xy,stack=updatedStack,df=toAdd_df[dispndx,],DensRaster,FreqList)  # add these disperser individuals and update the evolving factors
       leave_snuggle <- leave_snuggle-toAdd   # remove these individuals from the "leave" pool
-      #ndx <- cellFromXY(newPop,toAdd_df[,c("x","y")])
+      #ndx <- raster::cellFromXY(newPop,toAdd_df[,c("x","y")])
       #newPop[ndx] <- newPop[ndx]+toAdd_df$indiv
       # plot(newPop)
       # plot(updatedStack[["PopArray"]])
@@ -1266,7 +1343,8 @@ SpreadOut <- function(newStack=newStack,leave_snuggle=leave_snuggle,
 ############################# 
 
 #names(neighborhoodRasters)
-LongDistanceDispersal <- function(newStack=newStack,leave_kernel=leave_kernel,
+LongDistanceDispersal <- function(newStack,DensRaster,FreqList,
+                                  leave_kernel=leave_kernel,
                                   plagueStatus=plagueStatus,
                                   xy=xy,
                                   neighborhood_raster=neighborhoodRasters[['abundRaster']],
@@ -1284,24 +1362,24 @@ LongDistanceDispersal <- function(newStack=newStack,leave_kernel=leave_kernel,
   freeSpace <-  freeSpace_raster@data@values[which(freeSpace_raster@data@values>0)]
   if(length(freeSpace)>0){
     freeSpace <- (freeSpace+1)/max(freeSpace)  # convert to weighting factor in line with kernel
-    toAdd_df <- as.data.frame(xyFromCell(freeSpace_raster,which(freeSpace_raster@data@values>0))) # cells with empty space and habitat to go   
-    kernel.weights <- neighborhood_kernel_raster[cellFromXY(neighborhood_kernel_raster,toAdd_df[,c(1,2)])] 
+    toAdd_df <- as.data.frame(raster::xyFromCell(freeSpace_raster,which(freeSpace_raster@data@values>0))) # cells with empty space and habitat to go   
+    kernel.weights <- neighborhood_kernel_raster[raster::cellFromXY(neighborhood_kernel_raster,toAdd_df[,c(1,2)])] 
     # allocate those individuals 
     #toAdd_df$indiv <- 0
     #toAdd <- min(sum(freeSpace),leave_kernel)
     toAdd_df$indiv <- rmultinom(1,leave_kernel,prob=freeSpace*kernel.weights)[,1]    # disperser individuals to add to each cell (favor cells that have more free space...)
   }else{  # if there is no free space, then force dispersal anyway
-    toAdd_df <- as.data.frame(xyFromCell(neighborhood_raster,which(!is.na(neighborhood_raster@data@values)))) # cells with habitat to go   
-    kernel.weights <- neighborhood_kernel_raster[cellFromXY(neighborhood_kernel_raster,toAdd_df[,c(1,2)])] 
+    toAdd_df <- as.data.frame(raster::xyFromCell(neighborhood_raster,which(!is.na(neighborhood_raster@data@values)))) # cells with habitat to go   
+    kernel.weights <- neighborhood_kernel_raster[raster::cellFromXY(neighborhood_kernel_raster,toAdd_df[,c(1,2)])] 
     # allocate those individuals 
     #toAdd_df$indiv <- 0
     #toAdd <- min(sum(freeSpace),leave_kernel)
     toAdd_df$indiv <- rmultinom(1,leave_kernel,prob=kernel.weights)[,1]    # disperser individuals to add to each cell (favor cells that have more free space...)
   }
   dispndx <- which(toAdd_df$indiv>0)
-  updatedStack <- UpdateAbund(focalxy=xy,stack=newStack,df=toAdd_df[dispndx,])  # add these disperser individuals and update the accumulating raster stack
+  updatedStack <- UpdateAbund(focalxy=xy,stack=newStack,df=toAdd_df[dispndx,],DensRaster,FreqList)  # add these disperser individuals and update the accumulating raster stack
   #leave_kernel <- leave_kernel-toAdd   # remove these individuals from the "leave" pool
-  #ndx <- cellFromXY(newPop,toAdd_df[,c("x","y")])
+  #ndx <- raster::cellFromXY(newPop,toAdd_df[,c("x","y")])
   #newPop[ndx] <- newPop[ndx]+toAdd_df$indiv
   # plot(newPop)
   return(updatedStack)
@@ -1318,24 +1396,24 @@ LongDistanceDispersal <- function(newStack=newStack,leave_kernel=leave_kernel,
 ###################
 
 #names(neighborhoodRasters)
-ConsolidatePops <- function(newStack=newStack,leave=leave,
+ConsolidatePops <- function(newStack,DensRaster,FreqList,leave,
                             #newFociRaster=newFociRaster,
-                            plagueStatus=plagueStatus,
-                            xy=xy,
-                            newFociRaster=newFociRaster,
-                            neighborhood_raster=neighborhoodRasters[['abundRaster']],
-                            neighborhood_mask_raster=neighborhoodRasters[['maskRaster']],
+                            plagueStatus,
+                            xy,
+                            newFociRaster,
+                            neighborhood_raster,
+                            neighborhood_mask_raster,
                             UserParams){
   
   
   DispRates <- GetDispersalRates(plagueStatus,UserParams)
   # plot(newFociRaster)
   
-  tempFociRaster <- crop(newFociRaster,extent(neighborhood_mask_raster)) 
+  tempFociRaster <- raster::crop(newFociRaster,raster::extent(neighborhood_mask_raster)) 
   
   # plot(tempFociRaster)
   
-  localfoci <- as.data.frame(xyFromCell(tempFociRaster,which(tempFociRaster@data@values==1)))   # data frame of local foci
+  localfoci <- as.data.frame(raster::xyFromCell(tempFociRaster,which(tempFociRaster@data@values==1)))   # data frame of local foci
   nlocalfoci <- nrow(localfoci)              # number of existing new foci in the area
   
   if(nlocalfoci>UserParams$Dispersal$NFOCI) localfoci <- localfoci[sample(c(1:nlocalfoci),UserParams$Dispersal$NFOCI),]   # if multiple local foci, reduce the number of foci to NFOCI
@@ -1349,7 +1427,7 @@ ConsolidatePops <- function(newStack=newStack,leave=leave,
     candidates[candidates==0] <- 1
     
     for(i in 1:newfocineeded){
-      localfoci <- rbind(localfoci,as.data.frame(xyFromCell(tempFociRaster,which.max(candidates))))
+      localfoci <- rbind(localfoci,as.data.frame(raster::xyFromCell(tempFociRaster,which.max(candidates))))
       candidates[which.max(candidates)] <- 0
     }
   }
@@ -1357,10 +1435,10 @@ ConsolidatePops <- function(newStack=newStack,leave=leave,
   allocation <- rmultinom(1,leave,c(1:UserParams$Dispersal$NFOCI))[,1]
   localfoci$indiv <- allocation 
   
-  updatedStack <- UpdateAbund(focalxy=xy,stack=newStack,df=localfoci)     # move new individuals to local foci
+  updatedStack <- UpdateAbund(focalxy=xy,stack=newStack,df=localfoci,DensRaster,FreqList)     # move new individuals to local foci
   
   ## update foci
-  ndx <- cellFromXY(newFociRaster,localfoci[,c(1,2)])
+  ndx <- raster::cellFromXY(newFociRaster,localfoci[,c(1,2)])
   newFociRaster[ndx] <- 1  
   
   #assign(x="newFociRaster",value=newFociRaster,envir=env)
@@ -1371,22 +1449,36 @@ ConsolidatePops <- function(newStack=newStack,leave=leave,
   return(retlist)
 }
 
-stayFunction <- function(x,y){
-  #browser()
-  disprate = ifelse(y==1,UserParams$Dispersal$PLAGUE_DISPERSAL,UserParams$Dispersal$BASELINE_DISPERSAL)   # NOTE: this creates "donut holes" in colonies where plague has been...
-  
-  value <- ifelse(x>UserParams$Popbio$MAXDENS_HA,round(UserParams$Popbio$MAXDENS_HA*(1-disprate)),round(x*(1-disprate)))
-  value2 <- ifelse(x<UserParams$Popbio$MINDENS_HA,0,value)
-  #if(any(!is.na(c))) value[!is.na(c)] <-   #rpois(length(which(!is.na(c))),c[!is.na(c)])
-  return(value2)
+generateStayFunction <- function(UserParams){
+  force(UserParams)
+  fun <-  function(x,y){
+    disprate <- ifelse(y==1,UserParams$Dispersal$PLAGUE_DISPERSAL,UserParams$Dispersal$BASELINE_DISPERSAL)   # NOTE: this creates "donut holes" in colonies where plague has been...
+    
+    value <- ifelse(x>UserParams$Popbio$MAXDENS_HA,round(UserParams$Popbio$MAXDENS_HA*(1-disprate)),round(x*(1-disprate)))
+    value2 <- ifelse(x<UserParams$Popbio$MINDENS_HA,0,value)
+    #if(any(!is.na(c))) value[!is.na(c)] <-   #rpois(length(which(!is.na(c))),c[!is.na(c)])
+    return(value2)
+  }
+  return(fun)
 }
+  
+
+
+# stayFunction <- function(x,y,UserParams){
+#   disprate <- ifelse(y==1,UserParams$Dispersal$PLAGUE_DISPERSAL,UserParams$Dispersal$BASELINE_DISPERSAL)   # NOTE: this creates "donut holes" in colonies where plague has been...
+#   
+#   value <- ifelse(x>UserParams$Popbio$MAXDENS_HA,round(UserParams$Popbio$MAXDENS_HA*(1-disprate)),round(x*(1-disprate)))
+#   value2 <- ifelse(x<UserParams$Popbio$MINDENS_HA,0,value)
+#   #if(any(!is.na(c))) value[!is.na(c)] <-   #rpois(length(which(!is.na(c))),c[!is.na(c)])
+#   return(value2)
+# }
 
 ####################
 # MAIN DISPERSAL FUNCTION
 ####################
 
 #t=which(plagueyear)[1]
-doDispersal <- function(PlagueRaster,UserParams,BaseLandscape,DispList,newFociRaster){
+doDispersal <- function(UserParams,DensRaster,PlagueRaster,newFociRaster,FreqList,BaseLandscape,DispList){
 
   # ## build up the results for dispersal
   # newStack <- stack(list(
@@ -1406,7 +1498,9 @@ doDispersal <- function(PlagueRaster,UserParams,BaseLandscape,DispList,newFociRa
   newStack <- raster::stack(newStack)
   
   # before doing dispersal, determine who stays in place...
-  stayRaster <- overlay(DensRaster,PlagueRaster,fun=stayFunction)
+  
+  sF <- generateStayFunction(UserParams)   # use closure to force arguments to match
+  stayRaster <- raster::overlay(DensRaster,PlagueRaster,fun=sF)
     # plot(PlagueRaster)
     # plot(DensRaster)
     # plot(stayRaster)
@@ -1428,12 +1522,12 @@ doDispersal <- function(PlagueRaster,UserParams,BaseLandscape,DispList,newFociRa
       # plot(eval(parse(text=n))*stayRaster)
       # plot(newStack[[n]])
       # extent <- drawExtent()
-      # plot(crop(stayRaster,extent))   # okay this is actually working
+      # plot(raster::crop(stayRaster,extent))   # okay this is actually working
   }
  
   focalCells <- which(leaveRaster@data@values>0)   # identify cells with dispersers leaving
   xy_df <- data.frame(
-    xyFromCell(BaseLandscape$patchRaster,focalCells)
+    raster::xyFromCell(BaseLandscape$patchRaster,focalCells)
   )
   # reshuffle the order (make foci of expansion a bit more random...)
   xy_df <- xy_df[sample(c(1:nrow(xy_df))),]
@@ -1450,7 +1544,7 @@ doDispersal <- function(PlagueRaster,UserParams,BaseLandscape,DispList,newFociRa
     plagueStatus <- ifelse(PlagueRaster[focalcell]==1,"plague","noPlague")   # determine if plague
     DispRates <- GetDispersalRates(plagueStatus,UserParams)  # get the current dispersal rates
     
-    neighborhoodRasters <- makeNeighborhoodRasters(newStack,plagueStatus = plagueStatus, xy=xy,UserParams,DispList)  # characterize the possible sites to move to in the neighborhood
+    neighborhoodRasters <- makeNeighborhoodRasters(newStack,plagueStatus, xy,UserParams,DispList)  # characterize the possible sites to move to in the neighborhood
     
     thisAbund <- as.numeric(DensRaster[focalcell])  # abundance in the focal cell
     
@@ -1470,13 +1564,16 @@ doDispersal <- function(PlagueRaster,UserParams,BaseLandscape,DispList,newFociRa
       if(plagueStatus=="noPlague") leave_snuggle <- floor(leave*UserParams$Dispersal$SNUGGLE)   # these individuals will try to find a place to settle next door
       leave_kernel <- leave-leave_snuggle     # these individuals will obey the dispersal kernel
       # expand the colony
-      newStack <- SpreadOut(newStack=newStack,leave_snuggle=leave_snuggle,
-                            plagueStatus=plagueStatus,xy=xy,neighborhood_raster=neighborhoodRasters[['abundRaster']],
+      newStack <- SpreadOut(newStack,DensRaster,FreqList,
+                            leave_snuggle,
+                            plagueStatus,xy,neighborhood_raster=neighborhoodRasters[['abundRaster']],
                             neighborhood_mask_raster=neighborhoodRasters[['maskRaster']],
-                            freeSpace_raster=neighborhoodRasters[['freeSpaceRaster']],UserParams,DispList)
+                            freeSpace_raster=neighborhoodRasters[['freeSpaceRaster']],
+                            UserParams,
+                            DispList)
       
       # do long-distance dispersal (according to the dispersal kernel)
-      newStack <- LongDistanceDispersal(newStack=newStack,leave_kernel=leave_kernel,
+      newStack <- LongDistanceDispersal(newStack=newStack,DensRaster,FreqList,leave_kernel=leave_kernel,
                                         plagueStatus=plagueStatus,
                                         xy=xy,
                                         neighborhood_raster=neighborhoodRasters[['abundRaster']],
@@ -1491,7 +1588,7 @@ doDispersal <- function(PlagueRaster,UserParams,BaseLandscape,DispList,newFociRa
       #leave <- leaveRaster[focalcell] thisAbund-stay  # how many are leaving?
       
       # just do long-distance dispersal (according to the dispersal kernel)
-      newStack <- LongDistanceDispersal(newStack=newStack,leave_kernel=leave,
+      newStack <- LongDistanceDispersal(newStack=newStack,DensRaster,FreqList,leave_kernel=leave,
                                         plagueStatus=plagueStatus,
                                         xy=xy,
                                         neighborhood_raster=neighborhoodRasters[['abundRaster']],
@@ -1505,20 +1602,20 @@ doDispersal <- function(PlagueRaster,UserParams,BaseLandscape,DispList,newFociRa
       #leave <- stayRaster[focalcell]   #thisAbund
       
       # consolidate into new focal populations
-      temp <- ConsolidatePops(newStack=newStack,leave=leave,
-                                  plagueStatus=plagueStatus,
+      temp <- ConsolidatePops(newStack,DensRaster,FreqList,leave=leave,
+                                  plagueStatus,
                                   xy=xy,
-                                  newFociRaster=newFociRaster,
+                                  newFociRaster,
                                   neighborhood_raster=neighborhoodRasters[['abundRaster']],
                                   neighborhood_mask_raster=neighborhoodRasters[['maskRaster']],
                                   UserParams)
-      newStack <- temp$newStack
+      newStack <- temp$updatedStack
       newFociRaster <- temp$newFociRaster
       
       
     }
     #if(counter%%100==0) cat(sprintf("%s...",counter))
-    counter=counter+1
+    counter<-counter+1
   }  # end loop through focal cells
   
 #   plot(newStack[["DensRaster"]])
@@ -1543,12 +1640,13 @@ doDispersal <- function(PlagueRaster,UserParams,BaseLandscape,DispList,newFociRa
     focalcell = foci_ndx[1]
     for(focalcell in foci_ndx){  #loop through foci and spread them out!
       
-      xy <- as.data.frame(xyFromCell(DensRaster,focalcell))
+      xy <- as.data.frame(raster::xyFromCell(DensRaster,focalcell))
       
       plagueStatus <- ifelse(PlagueRaster[focalcell]==1,"plague","noPlague")   # determine if plague
       DispRates <- GetDispersalRates(plagueStatus,UserParams)  # get the current dispersal rates
       
-      neighborhoodRasters <- makeNeighborhoodRasters(newStack=newStack,plagueStatus = plagueStatus, xy=xy,UserParams,DispList)  # characterize the possible sites to move to in the neighborhood
+      #browser()
+      neighborhoodRasters <- makeNeighborhoodRasters(newStack,plagueStatus,xy,UserParams,DispList)  # characterize the possible sites to move to in the neighborhood
       
       thisAbund <- as.numeric(newStack[['DensRaster']][focalcell])  # abundance in the focal cell
       
@@ -1568,11 +1666,12 @@ doDispersal <- function(PlagueRaster,UserParams,BaseLandscape,DispList,newFociRa
       
       if((overcrowded)){   # if focal cell is overcrowded 
         stay <- UserParams$Popbio$MAXDENS_HA-thisAbund  # number that should stay (here, negative so that individuals are removed)
-        newStack <- UpdateAbund(focalxy=xy,stack=newStack,df=as.data.frame(cbind(xy,stay)))   # keep the "stay" individuals in place
+        newStack <- UpdateAbund(focalxy=xy,stack=newStack,df=as.data.frame(cbind(xy,stay)),DensRaster,FreqList)   # keep the "stay" individuals in place
         leave <- max(0,thisAbund-UserParams$Popbio$MAXABUND)  
         
         # expand the colony
-        newStack <- SpreadOut(newStack=newStack,leave_snuggle=leave,
+        newStack <- SpreadOut(newStack,DensRaster,FreqList,
+                              leave_snuggle=leave,
                               plagueStatus=plagueStatus,xy=xy,neighborhood_raster=neighborhoodRasters[['abundRaster']],
                               neighborhood_mask_raster=neighborhoodRasters[['maskRaster']],
                               freeSpace_raster=neighborhoodRasters[['freeSpaceRaster']],UserParams,DispList)
@@ -1605,7 +1704,7 @@ demographicStoch <- function(c){
   return(value)
 }
 
-doReproduce <- function(DensRaster=DensRaster,PlagueRaster=PlagueRaster,deviate){
+doReproduce <- function(UserParams,DensRaster,PlagueRaster,deviate){
   thisPop <- DensRaster
   #thisFec <- rnorm(1,BASELINE_MEANFEC,CV_FECUNDITY*BASELINE_MEANFEC)
   thisFec <- UserParams$Popbio$BASELINE_MEANFEC + (UserParams$Popbio$CV_FECUNDITY*UserParams$Popbio$BASELINE_MEANFEC)*deviate
@@ -1613,7 +1712,7 @@ doReproduce <- function(DensRaster=DensRaster,PlagueRaster=PlagueRaster,deviate)
   #thisPop[(thisPop<MINABUND)] <- 0  # populations below the allee threshold cannot breed
   thisPop[(PlagueRaster==0)&(thisPop>UserParams$Popbio$MINABUND)] <- thisPop[(PlagueRaster==0)&(thisPop>UserParams$Popbio$MINABUND)] + DensRaster[(PlagueRaster==0)&(thisPop>UserParams$Popbio$MINABUND)]*thisFec
   thisPop[(PlagueRaster==1)&(thisPop>UserParams$Popbio$MINABUND)] <- thisPop[(PlagueRaster==1)&(thisPop>UserParams$Popbio$MINABUND)] + (DensRaster[(PlagueRaster==1)&(thisPop>UserParams$Popbio$MINABUND)]*thisFec)/2   # reduced fecundity under plague...
-  thisPop <- calc(thisPop,fun=demographicStoch)
+  thisPop <- raster::calc(thisPop,fun=demographicStoch)
   # plot(thisPop)
   return(thisPop)   
 }
@@ -1626,7 +1725,6 @@ doReproduce <- function(DensRaster=DensRaster,PlagueRaster=PlagueRaster,deviate)
 #a=c(NA,NA,NA)
 # a = c(NA,NA,NA,NA,NA)
 getYearVariate <- function(a,deviate,cv){            # note: this function could work for fecundity too...
-  #browser()
   sd <- a*cv
   value <- rep(NA,times=length(a))
   if(any(!is.na(sd))){ 
@@ -1638,18 +1736,18 @@ getYearVariate <- function(a,deviate,cv){            # note: this function could
 }
 
 
-getSurvival <- function(resistanceStatus="susceptible",plagueStatus="plague"){
-  survival=0
-  if((plagueStatus=="noPlague")&(resistanceStatus=="susceptible")) survival = BASELINE_MEANSURV
-  if((plagueStatus=="noPlague")&(resistanceStatus=="resistant")) survival = BASELINE_MEANSURV - FITNESS_COST*(BASELINE_MEANSURV*BASELINE_PLAGUESURV_RESIST-SURVMIN_PLAGUE)
-  if((plagueStatus=="plague")&(resistanceStatus=="susceptible")) survival = BASELINE_PLAGUESURV
-  if((plagueStatus=="plague")&(resistanceStatus=="resistant")) survival = BASELINE_MEANSURV*BASELINE_PLAGUESURV_RESIST
-  return(survival)
-}
+# getSurvival <- function(resistanceStatus="susceptible",plagueStatus="plague"){
+#   survival=0
+#   if((plagueStatus=="noPlague")&(resistanceStatus=="susceptible")) survival = BASELINE_MEANSURV
+#   if((plagueStatus=="noPlague")&(resistanceStatus=="resistant")) survival = BASELINE_MEANSURV - FITNESS_COST*(BASELINE_MEANSURV*BASELINE_PLAGUESURV_RESIST-SURVMIN_PLAGUE)
+#   if((plagueStatus=="plague")&(resistanceStatus=="susceptible")) survival = BASELINE_PLAGUESURV
+#   if((plagueStatus=="plague")&(resistanceStatus=="resistant")) survival = BASELINE_MEANSURV*BASELINE_PLAGUESURV_RESIST
+#   return(survival)
+# }
 
 
     # new "getsurvival" function returns a map
-getSurvivalFunc <- function(resistanceStatus="susceptible",plagueStatus="plague",FCRaster=FCRaster,UserParams,BaseLandscape){
+getSurvivalFunc <- function(resistanceStatus="susceptible",plagueStatus="plague",FCRaster,UserParams,BaseLandscape){
     #survival=raster::reclassify(BaseLandscape$patchRaster,rcl=c(-Inf,Inf,0))
   if((plagueStatus=="noPlague")&(resistanceStatus=="susceptible")) survival = raster::reclassify(BaseLandscape$patchRaster,rcl=c(-Inf,Inf,UserParams$Popbio$BASELINE_MEANSURV))
   if((plagueStatus=="noPlague")&(resistanceStatus=="resistant")) survival = UserParams$Popbio$BASELINE_MEANSURV - FCRaster*(UserParams$Popbio$BASELINE_MEANSURV*UserParams$Popbio$BASELINE_PLAGUESURV_RESIST-UserParams$Popbio$SURVMIN_PLAGUE)
@@ -1658,7 +1756,7 @@ getSurvivalFunc <- function(resistanceStatus="susceptible",plagueStatus="plague"
   return(survival)  
 }
 
-getMeanSurvival <- function(FCRaster=FCRaster,UserParams,BaseLandscape){
+getMeanSurvival <- function(FCRaster,UserParams,BaseLandscape){
   meansurv <- list()
   for(i in c("resistant","susceptible")){
     meansurv[[i]] <-list()
@@ -1669,7 +1767,7 @@ getMeanSurvival <- function(FCRaster=FCRaster,UserParams,BaseLandscape){
   return(meansurv)
 }
 
-getSurvival <- function(deviate=deviate,cv=cv,FCRaster=FCRaster){
+getSurvival <- function(deviate,cv,UserParams,FCRaster,BaseLandscape){
   surv <- getMeanSurvival(FCRaster,UserParams,BaseLandscape)
   
   for(i in c("resistant","susceptible")){
@@ -1690,8 +1788,8 @@ getSurvival <- function(deviate=deviate,cv=cv,FCRaster=FCRaster){
 
      # note: maybe we should just break out poparray by resistance during the survival function... Otherwise just frequencies... 
      #     in that case, we need to update frequencies here too. This is where "enrichment" happens.
-doSurvival <- function(DensRaster,PlagueRaster,FreqList,UserParams){   # PopArray=PopArray
-  #thisPop <- getValues(PopArray)
+doSurvival <- function(DensRaster,PlagueRaster,FreqList,UserParams,BaseLandscape,deviate,cv){   # PopArray=PopArray
+  #thisPop <- raster::getValues(PopArray)
   
   temp <- GetStructuredPop(DensRaster,FreqList,UserParams)    # break out population into resistant and non-resistant (and account for resistance factors)
   thisPop <- temp$Pop
@@ -1702,7 +1800,7 @@ doSurvival <- function(DensRaster,PlagueRaster,FreqList,UserParams){   # PopArra
   
   FCRaster <- FitnessCost(FreqList,UserParams)      # compute fitness costs
   
-  surv <- getSurvival(deviate,cv,FCRaster)    # get survival for all possible combinations of resistance and plague
+  surv <- getSurvival(deviate,cv,UserParams,FCRaster,BaseLandscape)    # get survival for all possible combinations of resistance and plague
   
   
   ###########
@@ -1720,7 +1818,7 @@ doSurvival <- function(DensRaster,PlagueRaster,FreqList,UserParams){   # PopArra
   ##########
   
   for(status in c("resistant","susceptible")){
-    thisPop[[status]] <- calc(thisPop[[status]],fun=demographicStoch)
+    thisPop[[status]] <- raster::calc(thisPop[[status]],fun=demographicStoch)
   }
   
   
@@ -1779,7 +1877,6 @@ Gene2Factor <- function(UserParams,FreqList){  # FreqList
   for(gene in 1:UserParams$Genetics$NGENES){
     name = sprintf("gene%s",gene)
     name2 = sprintf("factor%s",gene)
-    #browser()
     newlist[[name2]] =  FreqList[[name]]^2 * UserParams$Genetics$DOMINANCE[gene,1] +
       (2*FreqList[[name]]*(1-FreqList[[name]])) * UserParams$Genetics$DOMINANCE[gene,2]
   }
@@ -1836,13 +1933,11 @@ resistfunc <- function(ngenes=UserParams$Genetics$NGENES){      # this function 
 
 
 IsResistant <- function(DensRaster,FreqList,fungen,UserParams){
-  browser()
   FactorList <- Gene2Factor(UserParams,FreqList)  # FreqList
-  temp <- overlay(FactorList,fun=fungen(UserParams$Genetics$NGENES)) #round(InitDensRaster*InitFreq[["gene1"]])   # freq of resist for each grid cell
-  ResistRaster <- overlay(DensRaster,temp,fun=function(x,y) x*y)      # numbers of resistant individuals in each grid cell
+  temp <- raster::overlay(FactorList,fun=fungen(UserParams$Genetics$NGENES)) #round(InitDensRaster*InitFreq[["gene1"]])   # freq of resist for each grid cell
+  ResistRaster <- raster::overlay(DensRaster,temp,fun=function(x,y) x*y)      # numbers of resistant individuals in each grid cell
   temp <- StrFreqFunc(DensRaster,ResistRaster,FreqList,UserParams) # returns "suslist" and "reslist" to global env
   
-  #browser()
   
   suslist <- temp$suslist
 
@@ -1856,8 +1951,9 @@ IsResistant <- function(DensRaster,FreqList,fungen,UserParams){
 }
 
 # use a closure    
-FCfunc <- function(ngenes){   # assume that fitness costs are simply additive
+FCfunc <- function(ngenes,UserParams){   # assume that fitness costs are simply additive
   nargs <- ngenes
+  force(UserParams)  #??
   arguments <- paste("X",c(1:nargs),sep="")
   arguments2 <- paste(arguments, collapse=",")
   arguments3 <- paste(paste("UserParams$Genetics$FITNESS_COST[",c(1:ngenes),"]*",arguments,sep=""),collapse="+")
@@ -1868,7 +1964,8 @@ FCfunc <- function(ngenes){   # assume that fitness costs are simply additive
 }
 
 FitnessCost <- function(FreqList,UserParams){
-  FCraster <- overlay(FreqList,fun=FCfunc(UserParams$Genetics$NGENES))  # degree of fitness cost
+  newfunc <- FCfunc(UserParams$Genetics$NGENES,UserParams)
+  FCraster <- raster::overlay(FreqList,fun=newfunc)  # degree of fitness cost
   return(FCraster)
 }
 
@@ -1879,7 +1976,6 @@ FitnessCost <- function(FreqList,UserParams){
 # use information on frequencies of resistance factors to struture population into resistance categories
 GetStructuredPop <- function(DensRaster,FreqList,UserParams){
   Pop <- list()
-  browser()
   temp <- IsResistant(DensRaster,FreqList,resistfunc,UserParams)      # structure by susceptible and resistant
   Pop[["resistant"]] <-  temp$ResistRaster
   Pop[["susceptible"]] <- DensRaster - Pop[["resistant"]]
@@ -1894,7 +1990,7 @@ GetStructuredPop <- function(DensRaster,FreqList,UserParams){
 
 # use information on frequencies of resistance factors to struture population into resistance categories
 GetUnstructuredPop <- function(PopArray,UserParams,FreqList,allelefreq){
-  Dens <- overlay(PopArray,fun=sum)    # get total population size
+  Dens <- raster::overlay(PopArray,fun=sum)    # get total population size
   i=1
   for(i in 1:UserParams$Genetics$NGENES){
     name <- sprintf("gene%s",i)
@@ -1931,7 +2027,6 @@ GetInitFreqs <- function(UserParams,BaseLandscape){
   }
   
   #plot(InitFreqList[["gene1"]])
- # browser()
   InitFreqList <- raster::stack(InitFreqList)
   
   #plot(InitFreqList)
