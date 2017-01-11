@@ -19,14 +19,14 @@ rm(list=ls())
 ## SIMULATION CONTROLS
 ############
 
-NYEARS <- 20
+NYEARS <- 25
 
 ############
 ## SET GLOBAL VARS
 ############
 
-KEVIN_LAPTOP <- FALSE #  TRUE #  
-KEVIN_OFFICEPC <- TRUE # FALSE # 
+KEVIN_LAPTOP <- TRUE #  FALSE #  
+KEVIN_OFFICEPC <- FALSE # TRUE # 
 
 if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
@@ -50,7 +50,7 @@ num_cores <- detectCores() - 1   # for setting up cluster... leave one core free
 ## SAMPLE FROM LATIN HYPERCUBE
 ############
 
-N_LHS_SAMPLES <- 10
+N_LHS_SAMPLES <- 20
 
 masterDF <- MakeLHSSamples(nicheBreadthDir=dir,NicheBreadth)
 
@@ -65,41 +65,49 @@ registerDoParallel(cl=cl)    # make the cluster
 #######################
 ## objects to export to each node in the cluster
 
-functionlist <- c()   # , 'mp.write'
-filelist <- c('masterDF')  #'MP_DIRECTORY','template','GENTIME','humanArrival.df','EXE_DIRECTORY','DLL_FILENAME','dispersalFunc.df','DistClasses','NPOPS','DistBins',
+# functionlist <- c()   # , 'mp.write'
+# filelist <- c()  # 'masterDF', 'MP_DIRECTORY','template','GENTIME','humanArrival.df','EXE_DIRECTORY','DLL_FILENAME','dispersalFunc.df','DistClasses','NPOPS','DistBins',
+# 
+# objectlist <- c(functionlist,filelist)   # full list of objects to export
+# 
+# 
+# packagelist <- c("secr","igraph","raster")
 
-objectlist <- c(functionlist,filelist)   # full list of objects to export
-
-
-packagelist <- c("secr","igraph","raster")
-
-allsamples <- foreach(i = 1:nrow(masterDF),
-                      .export=objectlist,
-                      .packages = packagelist,
+allsamples <- foreach(i = 1: nrow(masterDF),
+                      # .export=objectlist,
+                      # .packages = packagelist,
                       .errorhandling=c("pass")
 ) %dopar% {   
   
-  #####################
-  # LOAD FUNCTIONS
-  #####################
-  
-  setwd(GIT_DIR)
-  source("PlagueResistanceEvolution_FUNCTIONS.R")
-  
+  # #####################
+  # # LOAD FUNCTIONS
+  # #####################
+  # 
+  # setwd(GIT_DIR)
+  # source("PlagueResistanceEvolution_FUNCTIONS.R")
+  # 
   
   ############
   ## SET UP WORKSPACE AND LOAD PACKAGES
   ############
   
-  SetUpWorkspace()
+  #SetUpWorkspace()
   #num_cores <- detectCores() - 1   # for setting up cluster... leave one core free for windows background processes?
   
-  DoSimulateResistance(rep=i)    # simulate for these params... 
+  temp <- MakeWorker(NYEARS, masterDF, dirs)(i)  #DoSimulateResistance(rep=i)    # simulate for these params... 
   
 }     ## end parallel for loop
 
 
 
+###################
+# CLOSE CLUSTER
+###################
+
+if(!is.null(parallelCluster)) {
+  parallel::stopCluster(parallelCluster)
+  parallelCluster <- c()
+}
 
 
 ?rgb
