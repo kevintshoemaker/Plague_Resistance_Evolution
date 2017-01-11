@@ -672,7 +672,7 @@ MakeLHSSamples <- function(nicheBreadthDir,NicheBreadth){
   
   nVars <- length(names(LHSParms))  
   
-  LHS <- randomLHS(N_LHS_SAMPLES, nVars)   # generate multiple samples from parameter space according to a LHS sampling scheme
+  LHS <- lhs::randomLHS(N_LHS_SAMPLES, nVars)   # generate multiple samples from parameter space according to a LHS sampling scheme
   
   masterDF <- as.data.frame(LHS)    #  storage container (data frame) to record relevant details for each MP file. Rows:MP file/LHS samples. Cols: relevant variables
   

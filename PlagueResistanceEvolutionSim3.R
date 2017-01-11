@@ -19,7 +19,7 @@ rm(list=ls())
 ## SIMULATION CONTROLS
 ############
 
-NYEARS <- 10
+NYEARS <- 50
 
 ############
 ## SET GLOBAL VARS
@@ -44,13 +44,13 @@ source("PlagueResistanceEvolution_FUNCTIONS.R")
 ############
 
 dirs <- SetUpDirectories()
-num_cores <- detectCores() - 1   # for setting up cluster... leave one core free for windows background processes?
+num_cores <- parallel::detectCores() - 1   # for setting up cluster... leave one core free for windows background processes?
 
 ############
 ## SAMPLE FROM LATIN HYPERCUBE
 ############
 
-N_LHS_SAMPLES <- 4
+N_LHS_SAMPLES <- 60
 
 masterDF <- MakeLHSSamples(nicheBreadthDir=dir,NicheBreadth)
 
@@ -58,8 +58,11 @@ masterDF <- MakeLHSSamples(nicheBreadthDir=dir,NicheBreadth)
 ##  START A PARALLEL FOR LOOP
 ###########
 
-cl <- makeCluster(num_cores,outfile="LOG.TXT")
-registerDoParallel(cl=cl)    # make the cluster
+library(parallel)
+library(doParallel)
+
+cl <- parallel::makeCluster(num_cores,outfile="LOG.TXT")
+doParallel::registerDoParallel(cl=cl)    # make the cluster
 
 
 #######################
