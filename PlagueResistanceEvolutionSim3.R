@@ -50,7 +50,7 @@ num_cores <- parallel::detectCores() - 1   # for setting up cluster... leave one
 ## SAMPLE FROM LATIN HYPERCUBE
 ############
 
-N_LHS_SAMPLES <- 60
+N_LHS_SAMPLES <- 120
 
 masterDF <- MakeLHSSamples(nicheBreadthDir=dir,NicheBreadth)
 
@@ -76,7 +76,7 @@ doParallel::registerDoParallel(cl=cl)    # make the cluster
 # 
 # packagelist <- c("secr","igraph","raster")
 
-allsamples <- foreach(i = 1: nrow(masterDF)
+allsamples <- foreach(i = 61: (60+nrow(masterDF))
                       # .export=objectlist,
                       # .packages = packagelist,
                       # .errorhandling=c("pass")
@@ -115,6 +115,340 @@ if(!is.null(cl)) {
 
 
 ?rgb
+
+
+########################
+# HARVEST DATA INTO A CONVENIENT FORMAT FOR ANALYSIS
+########################
+
+masterDF2 <- HarvestData(masterDF,dirs)
+
+
+########################
+# ANALYZE DATA
+########################
+
+### use random forest?
+
+
+#Define catagorical variables as factors
+
+masterDF2$ISRES <- as.factor(masterDF2$ISRES)
+masterDF2$ISEXT <- as.factor(masterDF2$ISEXT)
+
+masterDF2$DOMINANCE <- as.factor(masterDF2$DOMINANCE)
+
+
+df <- masterDF2
+
+############### NAMING VARIABLES ############
+
+predictorNames <- c(  "% Habitat",       # nice readable names
+                      "Conspecific attraction",
+                      "Plague colony disruption",
+                      "Maximum density per ha",
+                      "Plague survival, susceptible",
+                      "Mean fecundity",
+                      "Fitness cost of resistance",
+                      "Initial resistance allele freq.",
+                      "Dominance of resistance factors"
+)
+
+pred.names=c(  "PER_SUITABLE",      
+               "SNUGGLE",
+               "PLAGUE_DISPERSAL",
+               "MAXDENS",
+               "BASELINE_PLAGUESURV",
+               "BASELINE_MEANFEC",
+               "FITNESS_COST",
+               "INITFREQ",
+               "DOMINANCE"
+)
+
+
+#name check
+cbind(pred.names,predictorNames)
+
+
+#### Define response variable
+
+response="ISRES"   
+
+#### Define our formula (response ~ predictors)
+
+formula1 <- as.formula(paste(response,"~",paste(pred.names,collapse="+")))
+
+
+#### Read in the script from github
+
+source("C:\\Users\\Kevin\\GIT\\Random-Forest-Functions\\RF_Extensions.R")   # change to your script locations
+
+##### CONDITIONAL INFERENCE TREE  ##################
+
+res.tr <- ctree(formula=formula1, data=df, controls = ctree_control(mincriterion = 0.5,maxdepth = 3))
+
+plot(res.tr)
+
+summary(res.tr)
+
+###########################################################
+###############  CFOREST #################
+
+cforestControl <- cforest_unbiased(ntree=500,mtry=3)   # change back to 500!!
+cforestControl@fraction <- 0.75
+
+cforestControl@gtctrl@mincriterion <- 0.5
+
+rf_model1 <- cforest(formula1, controls=cforestControl, data=df)
+
+# get the importance values
+model1_importance<-varimp((rf_model1), conditional= FALSE)
+
+graphics.off()
+lengthndx <- length(model1_importance)
+#par(mai=c(0.95,3.1,0.6,0.4))
+par(mai=c(1.4,3.4,0.6,0.9))
+col <- rainbow(lengthndx, start = 3/6, end = 4/6)      # rep(brewer.pal(6,"Blues"),each=2)
+barplot(height=model1_importance[order(model1_importance,decreasing = FALSE)],
+        horiz=T,las=1,main="Order of Importance of Predictor Variables",
+        xlab="Index of overall importance",col=col,           
+        names.arg=predictorNames[match(names(model1_importance),pred.names)][order(model1_importance,decreasing = FALSE)])
+
+
+
+#PREDICTIONS
+
+#predictions as probabilities
+temp <- predict(rf_model1,type="prob")
+predictions1<-numeric(nrow(newX_listed))
+for(i in 1:nrow(newX_listed)){
+  predictions1[i]<-temp[[i]][2]}
+#PRINT probabilities PREDICTIONS FILE
+#Mainpredict1 <- data.frame(newX_listed,predictions1)
+#write.table(Mainpredict1, file = "TerrMamm_Predictions_Raw_prob.txt")
+
+# get predicitons as 1's and 0's
+#predictions <- predict(rf_model1,type="response")
+#PRINT 0's and 1's PREDICTIONS FILE
+predictions <- ifelse(predictions1>=cutoff,1,0)
+Mainpredict <- data.frame(newX_listed,predictions,predictions1)
+
+write.table(Mainpredict, file = "TerrMamm_Predictions_Raw.txt")
+
+
+##### Make univariate plots of the relationships- plot all relationships at once
+
+RF_UnivariatePlots(object=rf_model1, varimp=model1_importance, data=df,  #   
+                   predictors=pred.names, labels=predictorNames, allpredictors=pred.names,plot.layout=c(2,2))
+
+
+
+##### Make univariate plots of the relationships- plot one relationship at a time
+
+RF_UnivariatePlots(object=rf_model1, varimp=model1_importance, data=df,  #   
+                   predictors=pred.names[1], labels=predictorNames[1], allpredictors=pred.names,plot.layout=c(1,1))
+
+
+# return the data for plotting
+PlotData <- RF_UnivariatePlots(object=rf_model1, varimp=model1_importance, data=df,  #   
+                               predictors=pred.names, labels=predictorNames, allpredictors=pred.names, plot.layout=c(1,1),plot=F)
+
+
+
+####################################
+#######################   RANDOM FOREST FIND AND PLOT INTERACTIONS
+
+# NOTE: this one can take a very long time   ...
+rf_findint <- RF_FindInteractions(object=rf_model1,data=df,predictors=pred.names)
+
+# display and plot out interactions...
+rf_findint$interactions1
+
+rf_findint$rank.list1
+
+### plot interaction strength
+graphics.off()
+lengthndx <- min(9,nrow(rf_findint$rank.list1))
+par(mai=c(0.95,3.1,0.6,0.4))
+#ndx <- ndx <- which(predictors%in%pred.names)
+barplot(height=(rf_findint$rank.list1[c(1:min(9,nrow(rf_findint$rank.list1))),5][c(lengthndx:1)]),
+        horiz=T,las=1,main=paste(response, sep=""),
+        xlab="Index of interaction strength",col=brewer.pal(lengthndx,"Blues"),           
+        names.arg=paste("",predictorNames[match(rf_findint$rank.list1[,2][c(lengthndx:1)],pred.names)],"\n",predictorNames[match(rf_findint$rank.list1[,4][c(lengthndx:1)],pred.names)],sep="") )
+
+graphics.off()
+
+
+rf_findint$rank.list1
+
+
+
+fam="gaussian"
+graphics.off()
+#svg(filename = "IntFig2.svg",
+# width = 7, height = 7, pointsize = 12,
+# onefile = TRUE, family = "sans", bg = "white")
+
+#### visualize the interactions
+
+RF_InteractionPlots(x=2,y=3,object=rf_model1,data=df,predictors=pred.names,family=fam) 
+
+dev.off()
+graphics.off()
+
+
+
+
+
+###################################
+#################### CROSS VALIDATION CODE
+
+n.folds = 10
+foldVector = rep(c(1:n.folds),times=floor(length(newX_listed$Listed)/9))[1:length(newX_listed$Listed)]
+#n.folds = length(newX_listed$resp_factor)
+#foldVector <- c(1:length(newX_listed$resp_factor))
+
+counter = 1
+CVprediction <- numeric(nrow(newX_listed))
+CVobserved <- numeric(nrow(newX_listed))
+realprediction <- numeric(nrow(newX_listed))
+realdata <- numeric(nrow(newX_listed))
+
+predictCols <- which(names(newX_listed)%in%pred.names)
+
+data.controls = cforest_unbiased(ntree=50)
+counter=1
+response="Listed"    #"resp_factor"
+
+#test <- numeric(nrow(newX_listed))
+for(i in 1:n.folds){
+  model <- cforest(formula1, data = newX_listed[which(foldVector!=i),], controls=data.controls) 
+  predict_CV  <- predict(model,newdata=newX_listed[which(foldVector==i),],type="prob") 
+  predict_real  <-  predict(rf_model1,newdata=newX_listed[which(foldVector==i),],type="prob")
+  REAL <- newX_listed$Listed[which(foldVector==i)]
+  for(j in 1:length(which(foldVector==i))){
+    CVprediction[counter] <- as.numeric(predict_CV[[j]][,2])
+    CVobserved[counter] <-  REAL[j]      
+    realprediction[counter] <- as.numeric(predict_real[[j]][,2])   
+    realdata[counter] <- REAL[j]         
+    counter = counter + 1  
+  }
+}
+
+fact=TRUE
+if(fact){
+  CVobserved = CVobserved-1
+  realdata=realdata-1
+}
+
+CV_RMSE = sqrt(mean((CVobserved-CVprediction)^2))       # root mean squared error for holdout samples in 10-fold cross-validation ...
+real_RMSE = sqrt(mean((CVobserved-realprediction)^2))  # root mean squared error for residuals from final model
+
+# print RMSE statistics
+CV_RMSE 
+real_RMSE   
+
+binaryresponse=TRUE
+
+if(binaryresponse){
+  graphics.off()
+  par(mfrow=c(2,1))
+  pred <- prediction(CVprediction,CVobserved)     # for holdout samples in cross-validation
+  perf <- performance(pred,"tpr","fpr")
+  auc <- performance(pred,"auc")
+  plot(perf)
+  text(.9,.1,paste("AUC = ",round(auc@y.values[[1]],2),sep=""))
+  
+  pred <- prediction(realprediction,CVobserved)     # for final model
+  perf <- performance(pred,"tpr","fpr")
+  auc <- performance(pred,"auc")
+  plot(perf)
+  text(.9,.1,paste("AUC = ",round(auc@y.values[[1]],2),sep=""))
+}
+
+# COHEN KAPPA statistics
+
+graphics.off()
+par(mfrow=c(2,1))
+thresholds <- seq(0.01,0.99,length=101)   # "artificial" extinction thresholds across which to examine performance
+kappa <- numeric(length(thresholds))
+for(i in 1:length(thresholds)){
+  trueLabels <- CVobserved
+  predLabels <- ifelse(CVprediction>=thresholds[i],1,0)
+  tot <- length(CVobserved)
+  tp <- length(which((trueLabels==1)&(predLabels==1)))  
+  tn <- length(which((trueLabels==0)&(predLabels==0)))
+  fp <- length(which((trueLabels==0)&(predLabels==1)))
+  fn <- length(which((trueLabels==1)&(predLabels==0)))
+  pr_agree <- (tp+tn)/tot    # overall agreement, or accuracy
+  pr_agree_rand <- ((tp+fn)/tot)*((tp+fp)/tot)+((fn+tn)/tot)*((fp+tn)/tot)
+  kappa[i] <- (pr_agree-pr_agree_rand)/(1-pr_agree_rand)
+}
+plot(thresholds,kappa,type="l",xlab="Threshold", ylab="Cohen's Kappa", main="Holdout sample performance")
+
+# find threshold value associated with highest Kappa for C-V data
+
+cutoff <- thresholds[which.max(kappa)]
+cutoff
+
+
+kappa <- numeric(length(thresholds)) 
+for(i in 1:length(thresholds)){
+  trueLabels <- CVobserved
+  predLabels <- ifelse(realprediction>=thresholds[i],1,0)    
+  tot <- length(CVobserved)
+  tp <- length(which((trueLabels==1)&(predLabels==1)))  
+  tn <- length(which((trueLabels==0)&(predLabels==0)))
+  fp <- length(which((trueLabels==0)&(predLabels==1)))
+  fn <- length(which((trueLabels==1)&(predLabels==0)))
+  pr_agree <- (tp+tn)/tot    # overall agreement, or accuracy
+  pr_agree_rand <- ((tp+fn)/tot)*((tp+fp)/tot)+((fn+tn)/tot)*((fp+tn)/tot)
+  kappa[i] <- (pr_agree-pr_agree_rand)/(1-pr_agree_rand)
+}
+plot(thresholds,kappa,type="l",xlab="Threshold", ylab="Cohen's Kappa", main="Performance: full model")
+
+
+
+### display confusion matrix and kappa for a single threshold
+trueLabels <- CVobserved
+predLabels <- ifelse(CVprediction>=cutoff,1,0)    
+tot <- length(CVobserved)
+tp <- length(which((trueLabels==1)&(predLabels==1)))  
+tn <- length(which((trueLabels==0)&(predLabels==0)))
+fp <- length(which((trueLabels==0)&(predLabels==1)))
+fn <- length(which((trueLabels==1)&(predLabels==0)))
+pr_agree <- (tp+tn)/tot    # overall agreement, or accuracy
+pr_agree_rand <- ((tp+fn)/tot)*((tp+fp)/tot)+((fn+tn)/tot)*((fp+tn)/tot)
+kappa[i] <- (pr_agree-pr_agree_rand)/(1-pr_agree_rand)
+kappa[i]
+matrix(c(tp,fp,fn,tn),nrow=2,ncol=2)
+sensitivity <- tp/(tp+fn)
+specificity <- tn/(tn+fp)
+toterror <- (fn+fp)/tot
+sensitivity
+specificity
+toterror
+
+if(binaryresponse){
+  CVprediction[which(CVprediction==1)] <- 0.9999
+  CVprediction[which(CVprediction==0)] <- 0.0001
+  realprediction[which(realprediction==1)] <- 0.9999
+  realprediction[which(realprediction==0)] <- 0.0001
+}
+
+
+realdata = CVobserved
+fit_deviance_CV <- mean((CVobserved-CVprediction)^2)
+if(binaryresponse) fit_deviance_CV <- mean(-2*(dbinom(CVobserved,1,CVprediction,log=T)-dbinom(realdata,1,realdata,log=T)))
+fit_deviance_real <- mean((CVobserved-realprediction)^2)
+if(binaryresponse) fit_deviance_real <- mean(-2*(dbinom(CVobserved,1,realprediction,log=T)-dbinom(realdata,1,realdata,log=T)))
+null_deviance <- mean((CVobserved-mean(CVobserved))^2)
+if(binaryresponse) null_deviance <- mean(-2*(dbinom(CVobserved,1,mean(CVobserved),log=T)-dbinom(realdata,1,realdata,log=T)))
+deviance_explained_CV <- (null_deviance-fit_deviance_CV)/null_deviance   # based on holdout samples
+deviance_explained_real <- (null_deviance-fit_deviance_real)/null_deviance   # based on full model...
+
+deviance_explained_CV
+deviance_explained_real
 
 
 

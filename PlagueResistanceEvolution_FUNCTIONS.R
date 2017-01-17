@@ -2,6 +2,36 @@
 # FUNCTIONS!!
 ########################
 
+######################
+# HARVEST DATA
+######################
+
+HarvestData <- function(masterDF,dirs){
+  newdf <- masterDF
+  newdf$ISRES <- NA
+  newdf$ISEXT <- NA
+  newdf$MAXFREQ <- NA
+  
+  
+  setwd(dirs$RESULTS_DIR)
+  nreps <- nrow(masterDF)
+  i=1
+  for(i in 1:nreps){
+    filename <- sprintf("Rep%s_results.RData",i)
+    load(filename)
+    attach(ResultsList)
+      newdf$ISRES[i] <- ifelse((finalabund>1000)&(mean(finalfreq)>0.5),1,0)
+      newdf$ISEXT[i] <- ifelse(finalabund==0,1,0)
+      newdf$MAXFREQ[i] <- max(byYear$resfreq)
+    detach(ResultsList)
+  }
+  return(newdf)
+}
+
+
+######################
+# MAKE WORKER: FOR PARALLELIZATION
+######################
 
 MakeWorker <- function(NYEARS, masterDF, dirs){
   
@@ -183,7 +213,7 @@ DoSimulateResistancePar <- function(rep=1){
     # MAKE PLOTS
     ###############
     
-    MakePlots(rep,t,BaseLandscape,DensRaster,PlagueRaster,FreqList)
+    if(rep%%5==0) MakePlots(rep,t,BaseLandscape,DensRaster,PlagueRaster,FreqList)
     
     ###############
     # STORE RESULTS
@@ -197,7 +227,7 @@ DoSimulateResistancePar <- function(rep=1){
   # MAKE MOVIES
   ###############
   
-  MakeMovie(rep) 
+  if(rep%%5==0) MakeMovie(rep) 
   
   ################
   # FINAL RESULTS
@@ -911,10 +941,10 @@ doPlague <- function(PlagueRaster=PlagueRaster,DensRaster=DensRaster,UserParams,
 #   colonies etc. 
 
 GetPlagueModel <- function(){
-  BETADENS <- 0.005
-  BETAPLAGUE <- 0.9
-  INTERACTION <- 0.03
-  INTERCEPT <- -6
+  BETADENS <- 0.001  # 0.005
+  BETAPLAGUE <- 0.9  # 0.9
+  INTERACTION <- 0.05  # 0.03
+  INTERCEPT <- -6  # -6
   
   faken <- 1000
   fakedens <- seq(0,200,length=faken)
@@ -931,7 +961,7 @@ GetPlagueModel <- function(){
   
   plogis(predict(plaguemodel,newdata=data.frame(dens=c(10:10),plaguepops=c(1:10))))
   
-  summary(plaguemodel)
+  #summary(plaguemodel)
   
   return(plaguemodel)
 }
