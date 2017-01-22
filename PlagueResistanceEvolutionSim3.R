@@ -25,8 +25,8 @@ NYEARS <- 50
 ## SET GLOBAL VARS
 ############
 
-KEVIN_LAPTOP <- TRUE #  FALSE #  
-KEVIN_OFFICEPC <- FALSE # TRUE # 
+KEVIN_LAPTOP <- FALSE #  TRUE #  
+KEVIN_OFFICEPC <- TRUE # FALSE # 
 
 if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
@@ -50,7 +50,7 @@ num_cores <- parallel::detectCores() - 1   # for setting up cluster... leave one
 ## SAMPLE FROM LATIN HYPERCUBE
 ############
 
-N_LHS_SAMPLES <- 120
+N_LHS_SAMPLES <- 150
 
 masterDF <- MakeLHSSamples(nicheBreadthDir=dir,NicheBreadth)
 
@@ -76,7 +76,7 @@ doParallel::registerDoParallel(cl=cl)    # make the cluster
 # 
 # packagelist <- c("secr","igraph","raster")
 
-allsamples <- foreach(i = 61: (60+nrow(masterDF))
+allsamples <- foreach(i = 1: (0+nrow(masterDF))
                       # .export=objectlist,
                       # .packages = packagelist,
                       # .errorhandling=c("pass")

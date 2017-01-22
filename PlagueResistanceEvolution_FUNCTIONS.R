@@ -941,15 +941,16 @@ doPlague <- function(PlagueRaster=PlagueRaster,DensRaster=DensRaster,UserParams,
 #   colonies etc. 
 
 GetPlagueModel <- function(){
-  BETADENS <- 0.001  # 0.005
-  BETAPLAGUE <- 0.9  # 0.9
+  BETADENS <- 0.02  # 0.005
+  BETAPLAGUE <- 0.01  # 0.9
   INTERACTION <- 0.05  # 0.03
   INTERCEPT <- -6  # -6
   
   faken <- 1000
-  fakedens <- seq(0,200,length=faken)
-  fakeplaguepops <- sample(c(0:5),faken,replace=T)
+  fakedens <- seq(0,200,length=faken)   # fakedens <- rep(seq(0,200,by=50),each=10)
+  fakeplaguepops <- sample(c(0:5),faken,replace=T)   # fakeplaguepops <- rep(c(0:9),times = 5)
   fakeplagueprob <- plogis(INTERCEPT + BETADENS*fakedens + BETAPLAGUE*fakeplaguepops + INTERACTION*fakeplaguepops*fakedens)
+  # matrix(fakeplagueprob,ncol=10,byrow=T)
   
   # raster::plot(fakeplagueprob~fakeplaguepops)
   #raster::plot(fakeplagueprob~fakedens)
