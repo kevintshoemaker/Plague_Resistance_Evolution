@@ -18,12 +18,14 @@ HarvestData <- function(masterDF,dirs){
   i=1
   for(i in 1:nreps){
     filename <- sprintf("Rep%s_results.RData",i)
-    load(filename)
-    attach(ResultsList)
-      newdf$ISRES[i] <- ifelse((finalabund>1000)&(mean(finalfreq)>0.5),1,0)
-      newdf$ISEXT[i] <- ifelse(finalabund==0,1,0)
-      newdf$MAXFREQ[i] <- max(byYear$resfreq)
-    detach(ResultsList)
+    if(file.exists(filename)){
+      load(filename)
+      attach(ResultsList)
+        newdf$ISRES[i] <- ifelse((finalabund>1000)&(mean(finalfreq)>0.5),1,0)
+        newdf$ISEXT[i] <- ifelse(finalabund==0,1,0)
+        newdf$MAXFREQ[i] <- max(byYear$resfreq)
+      detach(ResultsList)
+    }
   }
   return(newdf)
 }
@@ -333,12 +335,14 @@ MakePlots <- function(rep,t,BaseLandscape,DensRaster,PlagueRaster,FreqList){
   par(mfrow=c(1,2))
   raster::plot(BaseLandscape$patchRaster,col=gray(0.7),legend=F,main="Gene 1")
   #col = colorRampPalette(c("red","red"))(1)
-  col = rgb(0,seq(0,raster::maxValue(FreqList[["gene1"]]),length=10),0)
+  col2 = max(0,min(1,raster::maxValue(FreqList[["gene1"]])))
+  col = rgb(0,seq(0,col2,length=10),0)
   raster::plot(raster::reclassify(FreqList[["gene1"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
   
   raster::plot(BaseLandscape$patchRaster,col=gray(0.7),legend=F,main="Gene 2")
   #col = colorRampPalette(c("red","red"))(1)
-  col = rgb(0,seq(0,raster::maxValue(FreqList[["gene2"]]),length=10),0)
+  col2 = max(0,min(1,raster::maxValue(FreqList[["gene2"]])))
+  col = rgb(0,seq(0,col2,length=10),0)
   raster::plot(raster::reclassify(FreqList[["gene2"]],rcl=c(-Inf,0.001,NA)),add=T,col=col,legend=T)
   #raster::plot(raster::reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
   #raster::plot(raster::reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
@@ -351,7 +355,8 @@ MakePlots <- function(rep,t,BaseLandscape,DensRaster,PlagueRaster,FreqList){
   tiff(file, width=width,height=height)
   raster::plot(BaseLandscape$patchRaster,col=gray(0.7),legend=F)
   #col = colorRampPalette(c("red","red"))(1)
-  col = rgb(seq(0,raster::maxValue(PlagueRaster),length=10),0,0)
+  col2 = max(0,min(1,raster::maxValue(PlagueRaster)))
+  col = rgb(seq(0,col2,length=10),0,0)
   raster::plot(raster::reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),add=T,col=col,legend=T)
   #raster::plot(raster::reclassify(PlagueRaster,rcl=c(-Inf,0.01,NA)),col=rgb(1,0,0),add=T,alpha=0.5,legend=F)
   #raster::plot(raster::reclassify(NextPlagueSurvRaster,rcl=c(-Inf,0.001,NA)),col=heat.colors(10),add=T,legend=T)
@@ -666,7 +671,7 @@ specifyLHSParam <- function(paramslist,name,type,lb,ub){
 # BASELINE_PLAGUESURV_RESIST=0.5,BASELINE_MEANFEC=3.2,
 # FITNESS_COST=c(0.1,0.05),INITFREQ=c(0.09,0.1),DOMINANCE=dmat
 
-MakeLHSSamples <- function(nicheBreadthDir,NicheBreadth){
+MakeLHSSamples <- function(add){
   
   LHSParms <- list()    # initialize the container for parameter bounds
   
@@ -704,23 +709,26 @@ MakeLHSSamples <- function(nicheBreadthDir,NicheBreadth){
   
   LHS <- lhs::randomLHS(N_LHS_SAMPLES, nVars)   # generate multiple samples from parameter space according to a LHS sampling scheme
   
-  masterDF <- as.data.frame(LHS)    #  storage container (data frame) to record relevant details for each MP file. Rows:MP file/LHS samples. Cols: relevant variables
-  
+  temp <- as.data.frame(LHS)
   
   ### translate raw lhs samples into desired parameter space
-  colnames(masterDF) <- names(LHSParms)
+  colnames(temp) <- names(LHSParms)
   parm=1
   for(parm in 1:nVars){
     if(LHSParms[[parm]]$type=="CONT"){
-      masterDF[,parm] <- LHSParms[[parm]]$lb + LHS[,parm]*(LHSParms[[parm]]$ub-LHSParms[[parm]]$lb)
+      temp[,parm] <- LHSParms[[parm]]$lb + LHS[,parm]*(LHSParms[[parm]]$ub-LHSParms[[parm]]$lb)
     }
     if(LHSParms[[parm]]$type=="CAT"){
-      masterDF[,parm] <- ceiling(LHSParms[[parm]]$lb + LHS[,parm]*(LHSParms[[parm]]$ub-LHSParms[[parm]]$lb))
+      temp[,parm] <- ceiling(LHSParms[[parm]]$lb + LHS[,parm]*(LHSParms[[parm]]$ub-LHSParms[[parm]]$lb))
     }
     if(LHSParms[[parm]]$type=="INT"){
-      masterDF[,parm] <- round(LHSParms[[parm]]$lb + LHS[,parm]*(LHSParms[[parm]]$ub-LHSParms[[parm]]$lb))
+      temp[,parm] <- round(LHSParms[[parm]]$lb + LHS[,parm]*(LHSParms[[parm]]$ub-LHSParms[[parm]]$lb))
     }
   }
+  
+  if(add==FALSE) masterDF <- temp    #  storage container (data frame) to record relevant details for each MP file. Rows:MP file/LHS samples. Cols: relevant variables
+  
+  if(add==TRUE) masterDF <- rbind(masterDF,temp)
   
   setwd(dirs$DATA_DIR)
   ## name file for LHS parameters 

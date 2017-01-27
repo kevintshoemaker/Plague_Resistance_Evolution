@@ -44,15 +44,17 @@ source("PlagueResistanceEvolution_FUNCTIONS.R")
 ############
 
 dirs <- SetUpDirectories()
-num_cores <- parallel::detectCores() - 1   # for setting up cluster... leave one core free for windows background processes?
+num_cores <- parallel::detectCores() - 2   # for setting up cluster... leave one core free for windows background processes?
 
 ############
 ## SAMPLE FROM LATIN HYPERCUBE
 ############
 
-N_LHS_SAMPLES <- 150
+N_LHS_SAMPLES <- 200
 
-masterDF <- MakeLHSSamples(nicheBreadthDir=dir,NicheBreadth)
+masterDF <- MakeLHSSamples(add=TRUE)
+
+## note masterdf is written to data directory
 
 ###########
 ##  START A PARALLEL FOR LOOP
@@ -76,7 +78,7 @@ doParallel::registerDoParallel(cl=cl)    # make the cluster
 # 
 # packagelist <- c("secr","igraph","raster")
 
-allsamples <- foreach(i = 1: (0+nrow(masterDF))
+allsamples <- foreach(i = (150+1): nrow(masterDF)
                       # .export=objectlist,
                       # .packages = packagelist,
                       # .errorhandling=c("pass")
@@ -123,6 +125,7 @@ if(!is.null(cl)) {
 
 masterDF2 <- HarvestData(masterDF,dirs)
 
+#masterDF2[131,]
 
 ########################
 # ANALYZE DATA
@@ -139,7 +142,7 @@ masterDF2$ISEXT <- as.factor(masterDF2$ISEXT)
 masterDF2$DOMINANCE <- as.factor(masterDF2$DOMINANCE)
 
 
-df <- masterDF2
+df <- na.omit(masterDF2)
 
 ############### NAMING VARIABLES ############
 
@@ -172,7 +175,7 @@ cbind(pred.names,predictorNames)
 
 #### Define response variable
 
-response="ISRES"   
+response=  "ISEXT"   #  "ISRES"    # 
 
 #### Define our formula (response ~ predictors)
 
@@ -181,11 +184,13 @@ formula1 <- as.formula(paste(response,"~",paste(pred.names,collapse="+")))
 
 #### Read in the script from github
 
-source("C:\\Users\\Kevin\\GIT\\Random-Forest-Functions\\RF_Extensions.R")   # change to your script locations
+source_github("https://raw.githubusercontent.com/kevintshoemaker/Random-Forest-Functions/master/","RF_Extensions.R")
+
+#source("C:\\Users\\Kevin\\GIT\\Random-Forest-Functions\\RF_Extensions.R")   # change to your script locations
 
 ##### CONDITIONAL INFERENCE TREE  ##################
 
-res.tr <- ctree(formula=formula1, data=df, controls = ctree_control(mincriterion = 0.5,maxdepth = 3))
+res.tr <- ctree(formula=formula1, data=df, controls = ctree_control(mincriterion = 0.3,maxdepth = 3))
 
 plot(res.tr)
 
@@ -194,10 +199,10 @@ summary(res.tr)
 ###########################################################
 ###############  CFOREST #################
 
-cforestControl <- cforest_unbiased(ntree=500,mtry=3)   # change back to 500!!
+cforestControl <- cforest_unbiased(ntree=1000,mtry=3)   # change back to 500!!
 cforestControl@fraction <- 0.75
 
-cforestControl@gtctrl@mincriterion <- 0.5
+cforestControl@gtctrl@mincriterion <- 0.3
 
 rf_model1 <- cforest(formula1, controls=cforestControl, data=df)
 
@@ -214,26 +219,6 @@ barplot(height=model1_importance[order(model1_importance,decreasing = FALSE)],
         xlab="Index of overall importance",col=col,           
         names.arg=predictorNames[match(names(model1_importance),pred.names)][order(model1_importance,decreasing = FALSE)])
 
-
-
-#PREDICTIONS
-
-#predictions as probabilities
-temp <- predict(rf_model1,type="prob")
-predictions1<-numeric(nrow(newX_listed))
-for(i in 1:nrow(newX_listed)){
-  predictions1[i]<-temp[[i]][2]}
-#PRINT probabilities PREDICTIONS FILE
-#Mainpredict1 <- data.frame(newX_listed,predictions1)
-#write.table(Mainpredict1, file = "TerrMamm_Predictions_Raw_prob.txt")
-
-# get predicitons as 1's and 0's
-#predictions <- predict(rf_model1,type="response")
-#PRINT 0's and 1's PREDICTIONS FILE
-predictions <- ifelse(predictions1>=cutoff,1,0)
-Mainpredict <- data.frame(newX_listed,predictions,predictions1)
-
-write.table(Mainpredict, file = "TerrMamm_Predictions_Raw.txt")
 
 
 ##### Make univariate plots of the relationships- plot all relationships at once
