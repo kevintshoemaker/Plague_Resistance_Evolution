@@ -78,7 +78,7 @@ doParallel::registerDoParallel(cl=cl)    # make the cluster
 # 
 # packagelist <- c("secr","igraph","raster")
 
-allsamples <- foreach(i = (150+1): nrow(masterDF)
+allsamples <- foreach(i = (300+1): nrow(masterDF)
                       # .export=objectlist,
                       # .packages = packagelist,
                       # .errorhandling=c("pass")
@@ -190,7 +190,7 @@ source_github("https://raw.githubusercontent.com/kevintshoemaker/Random-Forest-F
 
 ##### CONDITIONAL INFERENCE TREE  ##################
 
-res.tr <- ctree(formula=formula1, data=df, controls = ctree_control(mincriterion = 0.3,maxdepth = 3))
+res.tr <- ctree(formula=formula1, data=df, controls = ctree_control(mincriterion = 0.6,maxdepth = 3))
 
 plot(res.tr)
 
@@ -202,7 +202,7 @@ summary(res.tr)
 cforestControl <- cforest_unbiased(ntree=1000,mtry=3)   # change back to 500!!
 cforestControl@fraction <- 0.75
 
-cforestControl@gtctrl@mincriterion <- 0.3
+cforestControl@gtctrl@mincriterion <- 0.5
 
 rf_model1 <- cforest(formula1, controls=cforestControl, data=df)
 
@@ -231,7 +231,7 @@ RF_UnivariatePlots(object=rf_model1, varimp=model1_importance, data=df,  #
 ##### Make univariate plots of the relationships- plot one relationship at a time
 
 RF_UnivariatePlots(object=rf_model1, varimp=model1_importance, data=df,  #   
-                   predictors=pred.names[1], labels=predictorNames[1], allpredictors=pred.names,plot.layout=c(1,1))
+                   predictors=pred.names[2], labels=predictorNames[2], allpredictors=pred.names,plot.layout=c(1,1))
 
 
 # return the data for plotting
@@ -276,7 +276,7 @@ graphics.off()
 
 #### visualize the interactions
 
-RF_InteractionPlots(x=2,y=3,object=rf_model1,data=df,predictors=pred.names,family=fam) 
+RF_InteractionPlots(x=3,y=8,object=rf_model1,data=df,predictors=pred.names,family=fam) 
 
 dev.off()
 graphics.off()
