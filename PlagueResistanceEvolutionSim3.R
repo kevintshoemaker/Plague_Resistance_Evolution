@@ -278,6 +278,10 @@ graphics.off()
 
 RF_InteractionPlots(x=3,y=8,object=rf_model1,data=df,predictors=pred.names,family=fam) 
 
+RF_InteractionPlots(x=9,y=1,object=rf_model1,data=df,predictors=pred.names,family=fam)
+
+RF_InteractionPlots(x=5,y=3,object=rf_model1,data=df,predictors=pred.names,family=fam)
+
 dev.off()
 graphics.off()
 
