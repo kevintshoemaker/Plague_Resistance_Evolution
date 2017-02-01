@@ -56,6 +56,9 @@ masterDF <- MakeLHSSamples(add=TRUE)
 
 ## note masterdf is written to data directory
 
+# setwd(dirs$DATA_DIR)
+# masterDF <- read.csv("masterDF_prelim2017-01-26.csv",header=T)
+
 ###########
 ##  START A PARALLEL FOR LOOP
 ###########
@@ -199,7 +202,7 @@ summary(res.tr)
 ###########################################################
 ###############  CFOREST #################
 
-cforestControl <- cforest_unbiased(ntree=1000,mtry=3)   # change back to 500!!
+cforestControl <- cforest_unbiased(ntree=1000,mtry=5)   # change back to 500!!
 cforestControl@fraction <- 0.75
 
 cforestControl@gtctrl@mincriterion <- 0.5
@@ -231,7 +234,7 @@ RF_UnivariatePlots(object=rf_model1, varimp=model1_importance, data=df,  #
 ##### Make univariate plots of the relationships- plot one relationship at a time
 
 RF_UnivariatePlots(object=rf_model1, varimp=model1_importance, data=df,  #   
-                   predictors=pred.names[2], labels=predictorNames[2], allpredictors=pred.names,plot.layout=c(1,1))
+                   predictors=pred.names[7], labels=predictorNames[7], allpredictors=pred.names,plot.layout=c(1,1))
 
 
 # return the data for plotting
@@ -280,7 +283,7 @@ RF_InteractionPlots(x=3,y=8,object=rf_model1,data=df,predictors=pred.names,famil
 
 RF_InteractionPlots(x=9,y=1,object=rf_model1,data=df,predictors=pred.names,family=fam)
 
-RF_InteractionPlots(x=5,y=3,object=rf_model1,data=df,predictors=pred.names,family=fam)
+RF_InteractionPlots(x=3,y=5,object=rf_model1,data=df,predictors=pred.names,family=fam)
 
 dev.off()
 graphics.off()
