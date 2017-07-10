@@ -58,7 +58,7 @@ MakeWorker <- function(NYEARS, masterDF, dirs){
  
   
   Worker <- function(i){
-    DoSimulateResistancePar(rep=i)
+    DoSimulateResistancePar(rep=i,fake=F)
   }
   
   return(Worker) 
@@ -73,7 +73,7 @@ MakeWorker <- function(NYEARS, masterDF, dirs){
 #######################
 
 
-DoSimulateResistancePar <- function(rep=1){
+DoSimulateResistancePar <- function(rep=1,fake=F){
   #plot(PlagueRaster)
   
   #env <- environment()    # surrogate for global environment
@@ -96,8 +96,9 @@ DoSimulateResistancePar <- function(rep=1){
   
   #assign(x="UserParams",value=UserParams, envir = env)
   
-  InitList <- DoInitialization(UserParams)  #BaseLandscape
+  InitList <- DoInitialization(UserParams,fake=fake)  #BaseLandscape
   PlagueRaster <- InitList$PlagueRaster
+  YearsSincePlague <- InitList$YearsSincePlague
   #PopArray <- InitList$PopArray
   InitFreqList <- InitList$InitFreqList
   InitDensRaster <- InitList$InitDensRaster
@@ -105,6 +106,7 @@ DoSimulateResistancePar <- function(rep=1){
   DispList <- InitList$DispList
   UserParams <- InitList$UserParams
   BaseLandscape <- InitList$BaseLandscape
+  EnvCovs <- InitList$EnvCovs
   # UserParams <- get("UserParams",envir=env)
   # BaseLandscape <- get("BaseLandscape",envir=env)
 
@@ -192,7 +194,17 @@ DoSimulateResistancePar <- function(rep=1){
     # PLAGUE PRESSURE
     ##################
     
-    PlagueRaster <- doPlague(PlagueRaster=PlagueRaster,DensRaster=DensRaster,UserParams,PlagueModel)
+    YearsSincePlague <- YearsSincePlague + 1
+    
+    PlagueRaster <- doPlague(PlagueRaster=PlagueRaster,YearsSincePlague=YearsSincePlague,DensRaster=DensRaster,UserParams,PlagueModel,EnvCovs,fake,timestep=t)
+    
+    plot(PlagueRaster)
+    
+    ##################
+    # update the years since plague variable...
+    
+    YearsSincePlague[PlagueRaster==1] <- 0 
+    
     #assign(x="DensRaster",value=DensRaster, envir = env)
     
     # plot(PlagueRaster)
@@ -410,7 +422,7 @@ MakeMovie <- function(rep){
 # DO INITIALIZATION
 #######################
 
-DoInitialization <- function(UserParams){  # BaseLandscape
+DoInitialization <- function(UserParams,fake=FALSE){  # BaseLandscape
   #####################
   # INITIALIZE DISPERSAL   (for both plague and no plague... )   
   #####################
@@ -423,15 +435,16 @@ DoInitialization <- function(UserParams){  # BaseLandscape
   # INITIALIZE LANDSCAPE
   ########################
   
-  temp <- InitializeLandscape(solid=F,UserParams)   # generate patchmaps etc.  # env
+  temp <- InitializeLandscape(solid=F,fake=fake,UserParams)   # generate patchmaps etc.  # env
   UserParams <- temp$UserParams   #get("UserParams",envir=env)
   BaseLandscape <- temp$BaseLandscape
+  EnvCovs <- temp$EnvCovs
   
   ########################
   # GET PLAGUE MODEL
   ########################
   
-  suppressWarnings(  PlagueModel <- GetPlagueModel()  )  # for now, use fake plague model- will be a statistical model
+  suppressWarnings(  PlagueModel <- GetPlagueModel(fake=fake)  )  # for now, use fake plague model- will be a statistical model
   
   #assign(x="PlagueModel",value=PlagueModel, envir = env)
   
@@ -462,6 +475,7 @@ DoInitialization <- function(UserParams){  # BaseLandscape
   ndx <- sample(which(!is.na(InitDensRaster2@data@values)),size=3)
   InitDensRaster2[ndx] <- 1000   # initialize population in random locations
   InitDensRaster <- InitDensRaster2
+  
   #PopArray2 <- InitDensRaster   # copy, for dispersal algorithm... 
   #assign(x="InitDensRaster",value=InitDensRaster, envir = env)
   
@@ -483,14 +497,22 @@ DoInitialization <- function(UserParams){  # BaseLandscape
   
   PlagueRaster_template <- raster::reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,0))   
   
+  YearsSincePlague <- raster::reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,10))
+  
     #PlagueModel <- get("PlagueModel",envir=env)
-  PlagueRaster <- doPlague(PlagueRaster=PlagueRaster_template, 
-                           DensRaster=raster::reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,0)),UserParams,PlagueModel)
+  PlagueRaster <- doPlague(PlagueRaster=PlagueRaster_template, YearsSincePlague = YearsSincePlague,
+                           DensRaster=raster::reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,1)),UserParams,PlagueModel,EnvCovs,fake,timestep=0)
+  
+  plot(PlagueRaster)
+  
+  YearsSincePlague[PlagueRaster==1] <- 0
+
   #assign(x="PlagueRaster",value=PlagueRaster, envir = env)
   
   init.list <- list()
   
   init.list$PlagueRaster <- PlagueRaster
+  init.list$YearsSincePlague <- YearsSincePlague
   #init.list$PopArray <- PopArray
   init.list$InitFreqList <- InitFreqList
   init.list$InitDensRaster <- InitDensRaster
@@ -501,6 +523,8 @@ DoInitialization <- function(UserParams){  # BaseLandscape
   init.list$UserParams <- UserParams
   
   init.list$BaseLandscape <- BaseLandscape
+  
+  init.list$EnvCovs <- EnvCovs
   
   return(init.list)
   
@@ -568,9 +592,21 @@ SetUpDirectories <- function(){
   
   if(KEVIN_LAPTOP) dirs$BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
   if(KEVIN_OFFICEPC) dirs$BASE_DIR <- "E:\\Dropbox\\PlagueModeling\\ResistanceEvolution"
+  if(KEVIN_LAPTOP2) dirs$BASE_DIR <- "C:\\Users\\KevinT_Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
 
   if(KEVIN_OFFICEPC) dirs$BASE_DIR2 <- "E:\\ResistanceEvolution"
   if(KEVIN_LAPTOP) dirs$BASE_DIR2 <- "C:\\ResistanceEvolution" 
+  if(KEVIN_LAPTOP2) dirs$BASE_DIR2 <- "C:\\ResistanceEvolution"
+  
+  dirs$plaguemod <- list()
+  
+  if(KEVIN_LAPTOP2) dirs$plaguemod$rootDir <- "C:\\Users\\KevinT_Kevin\\Dropbox\\PlagueModeling"
+  
+  
+  dirs$plaguemod$ScriptDir <- paste(dirs$plaguemod$rootDir,"\\Rscript",sep="")
+  dirs$plaguemod$DataDir <- paste(dirs$plaguemod$rootDir,"\\PrairieDogData",sep="")
+  dirs$plaguemod$CovDir <- paste(dirs$plaguemod$rootDir,"\\Covariates",sep="")
+  dirs$plaguemod$MODISDir <- paste(dirs$plaguemod$CovDir, "\\MODIS", sep="\\")
   
   # assign(x="BASE_DIR",value=BASE_DIR, envir = env)
   # assign(x="BASE_DIR2",value=BASE_DIR2, envir = env)
@@ -915,28 +951,130 @@ DefineUserParams <- function(PER_SUITABLE=0.4,SNUGGLE=0.75,NFOCI=1,MAXDISPERSAL=
 #
 # This function determines which populations currently have plague given statistical model)
 
-doPlague <- function(PlagueRaster=PlagueRaster,DensRaster=DensRaster,UserParams,PlagueModel){ 
+doPlague <- function(PlagueRaster=PlagueRaster,YearsSincePlague=YearsSincePlague,DensRaster=DensRaster,UserParams,PlagueModel,EnvCovs,fake,timestep){ 
   
-  nPlagueNeighbors <- raster::focal(PlagueRaster, w=matrix(1, nc=UserParams$Dispersal$MAXDISPERSAL_CELLS, nr=UserParams$Dispersal$MAXDISPERSAL_CELLS),na.rm=T)
+  if(fake){
+    nPlagueNeighbors <- raster::focal(PlagueRaster, w=matrix(1, nc=UserParams$Dispersal$MAXDISPERSAL_CELLS, nr=UserParams$Dispersal$MAXDISPERSAL_CELLS),na.rm=T)
+    
+    # raster::plot(PlagueRaster)
+    # raster::plot(nPlagueNeighbors)
+    
+    newdf <- data.frame(
+      dens = DensRaster@data@values,
+      plaguepops = nPlagueNeighbors@data@values
+    )
+    
+    # newdf <- data.frame(
+    #   dens=0,
+    #   plaguepops=0
+    # )
+    
+    prob <- plogis(as.numeric(predict(PlagueModel,newdata=newdf)))
+    ProbRaster <- raster::setValues(PlagueRaster,values=prob)
+    ndx <- !is.na(prob)
+    prediction <- prob
+    prediction[ndx] <- rbinom(length(which(ndx)),1,prediction[ndx])
+    
+  }else{     ### IF we are using a real plague model!!
+    
+    #### PATCH SIZE
+    
+    #DensRaster2 <- raster::crop(DensRaster,extent(EnvCovs$lat.c))   ## cropped to study landscape
+    
+    # plot(DensRaster)
+    # plot(EnvCovs$lat.c)
+    
+    temp.patch <- raster::clump(DensRaster, directions=8, gaps=FALSE)   # find occupied patches
+    cells.patch <- raster::freq(temp.patch)     # number of patches in clump
+    cells.patch <- as.data.frame(cells.patch[1:(nrow(cells.patch)-1),,drop=F])  # if no patches, this will have zero rows
+    
+    if(nrow(cells.patch)>0){
+      PATCHSIZE <- raster::subs(temp.patch, cells.patch, by=1, which=2)  # number of cells in patch, for each pixel
+    } else{
+      PATCHSIZE <- raster::reclassify(DensRaster,rcl=c(-Inf,Inf,0))
+    }
+    
+   # plot(PATCHSIZE)
+    
+    #### YEARS SINCE LAST PLAGUE (now computed in the main loop)
+    
+    
+    #### SLOPE COST TO PLAGUE
+    
+    slope.trans <- gdistance::transition(EnvCovs$slope.c, mean, 8)   # cost to move to neighboring cells (move to initialization?)
+    
+    dist.noplague <- DensRaster   # set up a baseline "dist to plague" raster
+    raster::values(dist.noplague) <- 50000    # 500000? #Need a raster for distance if there's no plague in the area (put distance at 500km)
+    
+    temp <- PlagueRaster  
+    raster::values(temp) <- ifelse(raster::values(temp)==0, NA, raster::values(temp))
+    if(any(!is.na(raster::values(temp)))){  # if any plagued cells?
+      plague.pts <- raster::rasterToPoints(PlagueRaster, fun=function(x){x==1})[,1:2]  ##Need plagued areas as points
+      slope.cost <- gdistance::accCost(slope.trans, plague.pts)
+      slope.cost <- raster::resample(slope.cost, DensRaster)
+    } else {
+      slope.cost <- dist.noplague    # if all no plague, then dist to plague is maximized for all cells 
+    }
+    
+    ################
+    # CONSTRUCT DATA FRAME OF PREDICTOR VARIABLES
+    ################
+    
+    
+    newdf <- data.frame(
+      psize = raster::values(PATCHSIZE),
+      slope.cost.plague = raster::values(slope.cost),
+      winspr.prcp.2prev = raster::values(EnvCovs$prcp.WinSpr[[max(1,(timestep-2))]]),
+      winspr.prcp.prev = raster::values(EnvCovs$prcp.WinSpr[[max(1,(timestep-1))]]),
+      winspr.prcp = raster::values(EnvCovs$prcp.WinSpr[[max(1,timestep)]]),
+      sumfal.prcp.2prev = raster::values(EnvCovs$prcp.SumFal[[max(1,(timestep-2))]]),
+      sumfal.prcp.prev =  raster::values(EnvCovs$prcp.SumFal[[max(1,(timestep-1))]]), 
+      sumfal.prcp = raster::values(EnvCovs$prcp.SumFal[[max(1,timestep)]]), 
+      year.prcp = raster::values(EnvCovs$prcp.year[[max(1,timestep)]]), 
+      sand0 = raster::values(EnvCovs$sand0.c), 
+      tmax.prev = raster::values(EnvCovs$tmax[[max(1,(timestep-1))]]), 
+      tmax = raster::values(EnvCovs$tmax[[max(1,timestep)]]),  
+      elev = raster::values(EnvCovs$NED.c), 
+      lat = raster::values(EnvCovs$lat.c), 
+      long = raster::values(EnvCovs$long.c), 
+      years.plague = raster::values(YearsSincePlague)
+    )
+    
+    keep <- !(values(DensRaster)%in%c(NA,0))    # in an occupied patch
+    #rmv <- is.na(values(DensRaster))   # out of a patch    # Q: was the model fitted to only data within patches?
+    
+    #newdf[rmv,] <- NA   # set  
+    
+    newdf2 <- newdf[keep,]
+    
+    head(newdf2)
+    
+    ################
+    # MAKE THE PREDICTION!
+    ################
+    
+    
+    
+    temp <- predict(PlagueModel,newdata=newdf2,type="prob")     # this can take a while unfortunately, but only has to be done once per time step
+    
+    prob <- numeric(nrow(newdf2))
+    i=1
+    for(i in 1:nrow(newdf2)){
+      prob[i] <- temp[[i]][,"plague.1"][1]
+    }
+    
+    
+    #ProbRaster <- raster::setValues(PlagueRaster,values=prob)
+    #ndx <- !is.na(prob)
+    
+    #prediction <- prob
+    prediction2 <- rbinom(length(prob),1,prob)    # maybe turn this into patch-level phenomenon?
+    
+    prediction <- rep(NA,times=nrow(newdf))
+    prediction[keep] <- prediction2
+    
+  }
   
-  # raster::plot(PlagueRaster)
-  # raster::plot(nPlagueNeighbors)
-  
-  newdf <- data.frame(
-    dens = DensRaster@data@values,
-    plaguepops = nPlagueNeighbors@data@values
-  )
-  
-  # newdf <- data.frame(
-  #   dens=0,
-  #   plaguepops=0
-  # )
-  
-  prob <- plogis(as.numeric(predict(PlagueModel,newdata=newdf)))
-  ProbRaster <- raster::setValues(PlagueRaster,values=prob)
-  ndx <- !is.na(prob)
-  prediction <- prob
-  prediction[ndx] <- rbinom(length(which(ndx)),1,prediction[ndx])
   PlagueRaster <- raster::setValues(PlagueRaster,values=prediction)   # set the plagueraster according to the statistical model
   return(PlagueRaster)
 }
@@ -948,29 +1086,36 @@ doPlague <- function(PlagueRaster=PlagueRaster,DensRaster=DensRaster,UserParams,
 #  This function (for now) builds a model of where and when plague occurs on the landscape as a function of the density of 
 #   colonies etc. 
 
-GetPlagueModel <- function(){
-  BETADENS <- 0.02  # 0.005
-  BETAPLAGUE <- 0.01  # 0.9
-  INTERACTION <- 0.05  # 0.03
-  INTERCEPT <- -6  # -6
-  
-  faken <- 1000
-  fakedens <- seq(0,200,length=faken)   # fakedens <- rep(seq(0,200,by=50),each=10)
-  fakeplaguepops <- sample(c(0:5),faken,replace=T)   # fakeplaguepops <- rep(c(0:9),times = 5)
-  fakeplagueprob <- plogis(INTERCEPT + BETADENS*fakedens + BETAPLAGUE*fakeplaguepops + INTERACTION*fakeplaguepops*fakedens)
-  # matrix(fakeplagueprob,ncol=10,byrow=T)
-  
-  # raster::plot(fakeplagueprob~fakeplaguepops)
-  #raster::plot(fakeplagueprob~fakedens)
-  fakeplague <- rbinom(faken,1,fakeplagueprob)
-  
-  dataFrame <- data.frame(plague=fakeplague,dens=fakedens,plaguepops=fakeplaguepops)
-  
-  plaguemodel <- glm(plague~1+plaguepops*dens,data=dataFrame,family="binomial")
-  
-  plogis(predict(plaguemodel,newdata=data.frame(dens=c(10:10),plaguepops=c(1:10))))
-  
-  #summary(plaguemodel)
+GetPlagueModel <- function(fake=TRUE){
+  if(fake){
+    BETADENS <- 0.02  # 0.005
+    BETAPLAGUE <- 0.01  # 0.9
+    INTERACTION <- 0.05  # 0.03
+    INTERCEPT <- -6  # -6
+    
+    faken <- 1000
+    fakedens <- seq(0,200,length=faken)   # fakedens <- rep(seq(0,200,by=50),each=10)
+    fakeplaguepops <- sample(c(0:5),faken,replace=T)   # fakeplaguepops <- rep(c(0:9),times = 5)
+    fakeplagueprob <- plogis(INTERCEPT + BETADENS*fakedens + BETAPLAGUE*fakeplaguepops + INTERACTION*fakeplaguepops*fakedens)
+    # matrix(fakeplagueprob,ncol=10,byrow=T)
+    
+    # raster::plot(fakeplagueprob~fakeplaguepops)
+    #raster::plot(fakeplagueprob~fakedens)
+    fakeplague <- rbinom(faken,1,fakeplagueprob)
+    
+    dataFrame <- data.frame(plague=fakeplague,dens=fakedens,plaguepops=fakeplaguepops)
+    
+    plaguemodel <- glm(plague~1+plaguepops*dens,data=dataFrame,family="binomial")
+    
+    #plogis(predict(plaguemodel,newdata=data.frame(dens=c(10:10),plaguepops=c(1:10))))
+    
+    #summary(plaguemodel)
+    
+  }else{   # otherwise use real plague model!
+    setwd(dirs$plaguemod$DataDir)
+    load("randomForestModel_2017-05-12.RData")    # load pre-constructed plague model (random forest!)
+    plaguemodel <- rfp1
+  }
   
   return(plaguemodel)
 }
@@ -1075,41 +1220,137 @@ InitializeDispersal <- function(UserParams){   # env
 #
 #  This function generates a fake landscape in which to model plague dynamics
 
-InitializeLandscape <- function(solid=F,UserParams){   #env
-  templateRaster <- raster::raster(nrows=UserParams$Landscape$NROWS, ncols=UserParams$Landscape$NCOLS, xmn=0, 
-                            xmx=UserParams$Landscape$CELLWIDTH_M*UserParams$Landscape$NROWS,ymn=0, 
-                            ymx=UserParams$Landscape$CELLWIDTH_M*UserParams$Landscape$NCOLS,vals=NA)    # template raster
-  # raster::plot(templateRaster)
+InitializeLandscape <- function(solid=F,fake=F,UserParams){   #env
   
-  if(solid){
-    patchRaster <- raster::setValues(templateRaster,1) 
-  }else{
+  maxdisp <- max(UserParams$Dispersal$MAXDISPERSAL_CELLS,UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE)  # for extending the landscape to accommodate dispersal
   
-  # use utility function from secr package to initialize landscape... 
-    tempgrid <- secr::make.grid(nx = UserParams$Landscape$NCOLS, ny = UserParams$Landscape$NROWS, spacing = UserParams$Landscape$CELLWIDTH_M,
-                          detector = "single", originxy = c(0,0), hollow = F,
-                          ID = "alphay")
+  if(fake){
+    templateRaster <- raster::raster(nrows=UserParams$Landscape$NROWS, ncols=UserParams$Landscape$NCOLS, xmn=0, 
+                              xmx=UserParams$Landscape$CELLWIDTH_M*UserParams$Landscape$NROWS,ymn=0, 
+                              ymx=UserParams$Landscape$CELLWIDTH_M*UserParams$Landscape$NCOLS,vals=NA)    # template raster
+    # raster::plot(templateRaster)
     
-    # secr::plot(tempgrid)  
+    if(solid){
+      patchRaster <- raster::setValues(templateRaster,1) 
+    }else{
     
-    tempmask <- secr::make.mask(traps=tempgrid, buffer = UserParams$Landscape$HALFCELLWIDTH_M, spacing = UserParams$Landscape$CELLWIDTH_M, 
-                          nx = UserParams$Landscape$NCOLS, ny = UserParams$Landscape$NROWS, type =
-                            c("traprect"))
+    # use utility function from secr package to initialize landscape... 
+      tempgrid <- secr::make.grid(nx = UserParams$Landscape$NCOLS, ny = UserParams$Landscape$NROWS, spacing = UserParams$Landscape$CELLWIDTH_M,
+                            detector = "single", originxy = c(0,0), hollow = F,
+                            ID = "alphay")
+      
+      # secr::plot(tempgrid)  
+      
+      tempmask <- secr::make.mask(traps=tempgrid, buffer = UserParams$Landscape$HALFCELLWIDTH_M, spacing = UserParams$Landscape$CELLWIDTH_M, 
+                            nx = UserParams$Landscape$NCOLS, ny = UserParams$Landscape$NROWS, type =
+                              c("traprect"))
+      
+      # plot(tempmask)
+      
+      temppatches <- secr::randomHabitat(mask=tempmask, p = 0.4, A = UserParams$Landscape$PER_SUITABLE, directions = 4, minpatch = 20,
+                                   drop = FALSE, covname = "habitat", plt = FALSE)
+      
+      #BaseLandscape$patchRaster <- templateRaster
+      #patchvals <- as.vector(t(as.matrix(covariates(temppatches)$habitat)))
+      patchRaster <- raster::setValues(templateRaster,values=secr::covariates(temppatches)$habitat)
+      
+      patchRaster <- raster::reclassify(patchRaster,rcl=c(-Inf,0.5,NA, 0.6,Inf,1))   # raster of habitat patches
+      # plot(patchRaster) 
+    }
+    ENV_COVARS <- NULL
     
-    # plot(tempmask)
+  }else{   # read in real landscape: patches and covariates.
     
-    temppatches <- secr::randomHabitat(mask=tempmask, p = 0.4, A = UserParams$Landscape$PER_SUITABLE, directions = 4, minpatch = 20,
-                                 drop = FALSE, covname = "habitat", plt = FALSE)
+    ##########
+    # LOAD ENVIRONMENTAL COVARIATES  (these do not change!)
+    ##########
     
-    #BaseLandscape$patchRaster <- templateRaster
-    #patchvals <- as.vector(t(as.matrix(covariates(temppatches)$habitat)))
-    patchRaster <- raster::setValues(templateRaster,values=secr::covariates(temppatches)$habitat)
+    setwd(dirs$plaguemod$CovDir)
+    load("EnvCov_smallPawnee.RData")
     
-    patchRaster <- raster::reclassify(patchRaster,rcl=c(-Inf,0.5,NA, 0.6,Inf,1))   # raster of habitat patches
-    # plot(patchRaster) 
-  }
-  
-  # extend patch raster to go outside the landscape bounds to the max dispersal distance...
+      ##### DEFINE ENV COVARIATES
+       ## note that env covariates have the right projection and resolution. 
+      
+      plot=F
+      
+      if(plot){
+        plot(ENV_COVARS$lat.c)
+        plot(ENV_COVARS$long.c)
+        plot(ENV_COVARS$NED.c)     ## elevation
+        plot(ENV_COVARS$prcp.SumFal)   # time series of maps
+        plot(ENV_COVARS$prcp.WinSpr)   # time series
+        plot(ENV_COVARS$prcp.year)     # ts
+        plot(ENV_COVARS$sand0.c)     #??
+        plot(ENV_COVARS$sand2.c)
+        plot(ENV_COVARS$slope.c)
+        plot(ENV_COVARS$tmax)   # ts  
+      } 
+      
+      ###############
+      # SET UP TEMPLATE RASTER
+      ###############
+      
+      ## create template
+      templateRaster <- raster::raster()   # template to create all other rasters for landscape of interest
+      extent(templateRaster) <- raster::extent(ENV_COVARS$lat.c) #Using smaller extent from covariates (snippet of Pawnee)
+      raster::res(templateRaster) <- raster::res(ENV_COVARS$lat.c)   # set the correct resolution
+      
+      ###################
+      # EXTEND THE ENVIRONMENTAL COVARIATES
+      
+      ENV_COVARS$lat.c <- raster::extend(ENV_COVARS$lat.c,maxdisp,value=NA)     #  raster::extend(patchRaster,maxdisp,value=NA)
+      ENV_COVARS$long.c <- raster::extend(ENV_COVARS$long.c,maxdisp,value=NA)
+      ENV_COVARS$NED.c <- raster::extend(ENV_COVARS$NED.c,maxdisp,value=NA)
+      ENV_COVARS$prcp.SumFal <- raster::extend(ENV_COVARS$prcp.SumFal,maxdisp,value=NA)
+      ENV_COVARS$prcp.WinSpr <- raster::extend(ENV_COVARS$prcp.WinSpr,maxdisp,value=NA)
+      ENV_COVARS$prcp.year <- raster::extend(ENV_COVARS$prcp.year,maxdisp,value=NA)
+      ENV_COVARS$sand0.c <- raster::extend(ENV_COVARS$sand0.c,maxdisp,value=NA)
+      ENV_COVARS$sand2.c <- raster::extend(ENV_COVARS$sand2.c,maxdisp,value=NA)
+      ENV_COVARS$slope.c <- raster::extend(ENV_COVARS$slope.c,maxdisp,value=NA)
+      ENV_COVARS$tmax <- raster::extend(ENV_COVARS$tmax,maxdisp,value=NA)
+      
+      ##############
+      # SET UP PATCH RASTER
+      ##############
+      
+      setwd(dirs$plaguemod$DataDir)
+      
+      #Read in the "master colony" shapefile
+      
+      load("PawneeColonies.RData")
+      
+      #load("MasterColonies_2017-05-09.RData")    # elizabeth's version had way too much stuff in it!
+      #save(master.colony.Pawne,file="PawneeColonies.RData")
+      
+      
+      plot=F
+      
+      if(plot){
+        plot(ENV_COVARS$NED.c)
+        plot(master.colony.Pawne,add=T)
+      }
+      
+      #Crop master colony polygon to working extent
+      mcP <- raster::crop(master.colony.Pawne, raster::extent(templateRaster))   # do I need this?
+      
+      patchRaster <- raster::rasterize(mcP, templateRaster, background=NA, field=1)
+      
+      
+      #############
+      # UPDATE USER PARAMS
+      #############
+      
+      UserParams$Landscape$NROWS <- raster::nrow(templateRaster)
+      UserParams$Landscape$NCOLS <- raster::ncol(templateRaster)
+      UserParams$Landscape$CELLAREA_HA <- prod(raster::res(templateRaster))/10000
+      UserParams$Landscape$CELLAREA_M2 <- prod(raster::res(templateRaster))
+      UserParams$Landscape$CELLWIDTH_M <- raster::res(templateRaster)[1]
+      UserParams$Landscape$HALFCELLWIDTH_M <- UserParams$Landscape$CELLWIDTH_M / 2
+      UserParams$Landscape$PER_SUITABLE <- length(which(raster::values(patchRaster)==1))/raster::ncell(templateRaster)    # overwrite the percent suitable if a real landscape is used (this is constant!)
+    
+  }  
+
+    # extend patch raster to go outside the landscape bounds to the max dispersal distance...
   maxdisp <- max(UserParams$Dispersal$MAXDISPERSAL_CELLS,UserParams$Dispersal$MAXDISPERSAL_CELLS_PLAGUE)
   patchRaster <- raster::extend(patchRaster,maxdisp,value=NA)
   
@@ -1152,6 +1393,7 @@ InitializeLandscape <- function(solid=F,UserParams){   #env
   returnlist <- list()
   returnlist$BaseLandscape <- BaseLandscape
   returnlist$UserParams <- UserParams
+  returnlist$EnvCovs <- ENV_COVARS
   
   # assign(x="patchRaster",value=patchRaster, envir = env)
   # assign(x="KRaster",value=KRaster, envir = env)

@@ -18,9 +18,12 @@ NYEARS <- 25
 
 KEVIN_LAPTOP <- TRUE #  FALSE #  
 KEVIN_OFFICEPC <- FALSE # TRUE # 
+KEVIN_LAPTOP2 <- TRUE #  
 
 if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
+if(KEVIN_LAPTOP2) GIT_DIR <- "C:\\Users\\KevinT_Kevin\\Documents\\GitHub\\Plague_Resistance_Evolution"
+
 
 #####################
 # LOAD FUNCTIONS

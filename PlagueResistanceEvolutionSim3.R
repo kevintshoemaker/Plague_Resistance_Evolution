@@ -25,11 +25,13 @@ NYEARS <- 50
 ## SET GLOBAL VARS
 ############
 
-KEVIN_LAPTOP <- FALSE #  TRUE #  
-KEVIN_OFFICEPC <- TRUE # FALSE # 
+KEVIN_LAPTOP <- FALSE #  
+KEVIN_OFFICEPC <- FALSE # 
+KEVIN_LAPTOP2 <- TRUE #  
 
 if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
+if(KEVIN_LAPTOP2) GIT_DIR <- "C:\\Users\\KevinT_Kevin\\Documents\\GitHub\\Plague_Resistance_Evolution"
 
 #####################
 # LOAD FUNCTIONS
@@ -50,9 +52,11 @@ num_cores <- parallel::detectCores() - 2   # for setting up cluster... leave one
 ## SAMPLE FROM LATIN HYPERCUBE
 ############
 
-N_LHS_SAMPLES <- 200
+N_LHS_SAMPLES <- 4  # 200
 
-masterDF <- MakeLHSSamples(add=TRUE)
+masterDF <- MakeLHSSamples(add=FALSE)
+
+rep=1
 
 ## note masterdf is written to data directory
 
