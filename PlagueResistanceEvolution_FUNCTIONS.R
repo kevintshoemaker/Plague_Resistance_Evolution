@@ -171,8 +171,8 @@ DoSimulateResistancePar <- function(rep=1,fake=F){
     
     #assign(x="DensRaster",value=DensRaster, envir = env)
     
-    # plot(DensRaster)    # good in t=1, not so much in t=2
-    # plot(FreqList[["gene2"]])
+    # raster::plot(DensRaster)    # good in t=1, not so much in t=2
+    # raster::plot(FreqList[["gene2"]])
     
     ###############
     # ALLEE EFFECT: REMOVE POPULATIONS BELOW A MINIMUM ABUNDANCE THRESHOLD
@@ -187,7 +187,7 @@ DoSimulateResistancePar <- function(rep=1,fake=F){
     DensRaster <- doDDSurvival(DensRaster,UserParams)
     #assign(x="DensRaster",value=DensRaster, envir = env)
     
-    # plot(DensRaster) 
+    # raster::plot(DensRaster) 
     # plot(FreqList[["gene1"]])
     
     ##################
@@ -604,15 +604,18 @@ SetUpDirectories <- function(){
   if(KEVIN_LAPTOP) dirs$BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
   if(KEVIN_OFFICEPC) dirs$BASE_DIR <- "E:\\Dropbox\\PlagueModeling\\ResistanceEvolution"
   if(KEVIN_LAPTOP2) dirs$BASE_DIR <- "C:\\Users\\KevinT_Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
+  if(MIRANDA) dirs$BASE_DIR <- "C:\\PlagueResistance"
 
   if(KEVIN_OFFICEPC) dirs$BASE_DIR2 <- "E:\\ResistanceEvolution"
   if(KEVIN_LAPTOP) dirs$BASE_DIR2 <- "C:\\ResistanceEvolution" 
   if(KEVIN_LAPTOP2) dirs$BASE_DIR2 <- "C:\\ResistanceEvolution"
+  if(MIRANDA) dirs$BASE_DIR2 <- "C:\\PlagueResistance"
   
   dirs$plaguemod <- list()
   
   if(KEVIN_LAPTOP2) dirs$plaguemod$rootDir <- "C:\\Users\\KevinT_Kevin\\Dropbox\\PlagueModeling"
   if(KEVIN_OFFICEPC) dirs$plaguemod$rootDir <- "E:\\Dropbox\\PlagueModeling"
+  if(MIRANDA) dirs$plaguemod$rootDir <- "C:\\PlagueResistance"
   
   
   dirs$plaguemod$ScriptDir <- paste(dirs$plaguemod$rootDir,"\\Rscript",sep="")

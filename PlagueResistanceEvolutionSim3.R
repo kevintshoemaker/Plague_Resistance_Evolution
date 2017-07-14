@@ -19,19 +19,21 @@ rm(list=ls())
 ## SIMULATION CONTROLS
 ############
 
-NYEARS <- 56    # 1980 to 2036
+NYEARS <- 50    # 1980 to 2036
 
 ############
 ## SET GLOBAL VARS
 ############
 
 KEVIN_LAPTOP <- FALSE #  
-KEVIN_OFFICEPC <- TRUE # FALSE # 
+KEVIN_OFFICEPC <- FALSE #  TRUE # 
 KEVIN_LAPTOP2 <- FALSE # TRUE #  
+MIRANDA <- TRUE
 
 if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_LAPTOP2) GIT_DIR <- "C:\\Users\\KevinT_Kevin\\Documents\\GitHub\\Plague_Resistance_Evolution"
+if(MIRANDA) GIT_DIR <- "C:\\Users\\kshoemaker\\Documents\\GitHub\\Plague_Resistance_Evolution"
 
 #####################
 # LOAD FUNCTIONS
@@ -51,20 +53,20 @@ rm(GIT_DIR)
 
 num_cores <- parallel::detectCores() - 2   # for setting up cluster... leave one core free for windows background processes?
 
-num_cores <- 10
+num_cores <- 6
 
 
 ############
 ## SAMPLE FROM LATIN HYPERCUBE
 ############
 
-N_LHS_SAMPLES <- 100  # 200
+N_LHS_SAMPLES <- 300  # 200
 
 masterDF <- MakeLHSSamples(add=FALSE)
 
 rep=1
 
-fake=F
+fake=T
 
 ## note masterdf is written to data directory
 
