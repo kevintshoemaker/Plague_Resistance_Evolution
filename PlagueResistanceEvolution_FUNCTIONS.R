@@ -243,7 +243,7 @@ DoSimulateResistancePar <- function(rep=1,fake=F){
   # MAKE MOVIES
   ###############
   
-  if(rep%%2==0) MakeMovie(rep) 
+  #if(rep%%2==0) MakeMovie(rep) 
   
   ################
   # FINAL RESULTS
