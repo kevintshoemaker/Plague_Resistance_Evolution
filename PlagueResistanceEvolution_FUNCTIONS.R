@@ -198,12 +198,14 @@ DoSimulateResistancePar <- function(rep=1,fake=F){
     
     PlagueRaster <- doPlague(PlagueRaster=PlagueRaster,YearsSincePlague=YearsSincePlague,DensRaster=DensRaster,UserParams,PlagueModel,EnvCovs,fake,timestep=t)
     
-    plot(PlagueRaster)
+    # raster::plot(PlagueRaster)
     
     ##################
     # update the years since plague variable...
     
     YearsSincePlague[PlagueRaster==1] <- 0 
+    
+    # raster::plot(YearsSincePlague)
     
     #assign(x="DensRaster",value=DensRaster, envir = env)
     
@@ -227,7 +229,7 @@ DoSimulateResistancePar <- function(rep=1,fake=F){
     # MAKE PLOTS
     ###############
     
-    if(rep%%5==0) MakePlots(rep,t,BaseLandscape,DensRaster,PlagueRaster,FreqList)
+    if(rep%%2==0) MakePlots(rep,t,BaseLandscape,DensRaster,PlagueRaster,FreqList)
     
     ###############
     # STORE RESULTS
@@ -241,7 +243,7 @@ DoSimulateResistancePar <- function(rep=1,fake=F){
   # MAKE MOVIES
   ###############
   
-  if(rep%%5==0) MakeMovie(rep) 
+  if(rep%%2==0) MakeMovie(rep) 
   
   ################
   # FINAL RESULTS
@@ -391,6 +393,15 @@ MakeMovie <- function(rep){
   thisFIGS_DIR <- sprintf("%s\\rep%04d",dirs$FIGS_DIR2,rep)
   
   setwd(thisFIGS_DIR)
+  
+  #### remove figures that are not part of this simulation?
+  
+  fileyrs <- as.numeric(unlist(regmatches(list.files(), gregexpr("[[:digit:]]+", list.files()))))
+  notthissim <- fileyrs > NYEARS
+  toremove <- list.files()[notthissim]
+  
+  if(any(notthissim)) file.remove(toremove)
+  
   ## NOTE: need command line like this: ffmpeg -f image2 -framerate 2 -i AbundanceFig_year%03d.tif -s 500x500 test.avi -y
   
   # MAKING THE REAL MOVIE HERE! USE IMAGE MAGICK AND FFMPEG SOFTWARE  (https://blogazonia.wordpress.com/2016/01/19/making-a-movie-with-r/)
@@ -471,10 +482,10 @@ DoInitialization <- function(UserParams,fake=FALSE){  # BaseLandscape
   
   ### Code block for pop starting from small loci
   
-  InitDensRaster2 <- raster::reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,0))    # for testing
-  ndx <- sample(which(!is.na(InitDensRaster2@data@values)),size=3)
-  InitDensRaster2[ndx] <- 1000   # initialize population in random locations
-  InitDensRaster <- InitDensRaster2
+  # InitDensRaster2 <- raster::reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,0))    # for testing
+  # ndx <- sample(which(!is.na(InitDensRaster2@data@values)),size=3)
+  # InitDensRaster2[ndx] <- 1000   # initialize population in random locations
+  # InitDensRaster <- InitDensRaster2
   
   #PopArray2 <- InitDensRaster   # copy, for dispersal algorithm... 
   #assign(x="InitDensRaster",value=InitDensRaster, envir = env)
@@ -501,9 +512,9 @@ DoInitialization <- function(UserParams,fake=FALSE){  # BaseLandscape
   
     #PlagueModel <- get("PlagueModel",envir=env)
   PlagueRaster <- doPlague(PlagueRaster=PlagueRaster_template, YearsSincePlague = YearsSincePlague,
-                           DensRaster=raster::reclassify(BaseLandscape$patchIDRaster,rcl=c(-Inf,Inf,1)),UserParams,PlagueModel,EnvCovs,fake,timestep=0)
+                           DensRaster=InitDensRaster,UserParams,PlagueModel,EnvCovs,fake,timestep=0)
   
-  plot(PlagueRaster)
+  #raster::plot(PlagueRaster)
   
   YearsSincePlague[PlagueRaster==1] <- 0
 
@@ -601,6 +612,7 @@ SetUpDirectories <- function(){
   dirs$plaguemod <- list()
   
   if(KEVIN_LAPTOP2) dirs$plaguemod$rootDir <- "C:\\Users\\KevinT_Kevin\\Dropbox\\PlagueModeling"
+  if(KEVIN_OFFICEPC) dirs$plaguemod$rootDir <- "E:\\Dropbox\\PlagueModeling"
   
   
   dirs$plaguemod$ScriptDir <- paste(dirs$plaguemod$rootDir,"\\Rscript",sep="")
@@ -1040,8 +1052,8 @@ doPlague <- function(PlagueRaster=PlagueRaster,YearsSincePlague=YearsSincePlague
       years.plague = raster::values(YearsSincePlague)
     )
     
-    keep <- !(values(DensRaster)%in%c(NA,0))    # in an occupied patch
-    #rmv <- is.na(values(DensRaster))   # out of a patch    # Q: was the model fitted to only data within patches?
+    keep <- !(raster::values(DensRaster)%in%c(NA,0))    # in an occupied patch
+    #rmv <- is.na(raster::values(DensRaster))   # out of a patch    # Q: was the model fitted to only data within patches?
     
     #newdf[rmv,] <- NA   # set  
     
@@ -1070,7 +1082,7 @@ doPlague <- function(PlagueRaster=PlagueRaster,YearsSincePlague=YearsSincePlague
     #prediction <- prob
     prediction2 <- rbinom(length(prob),1,prob)    # maybe turn this into patch-level phenomenon?
     
-    prediction <- rep(NA,times=nrow(newdf))
+    prediction <- rep(0,times=nrow(newdf))
     prediction[keep] <- prediction2
     
   }
@@ -1274,17 +1286,63 @@ InitializeLandscape <- function(solid=F,fake=F,UserParams){   #env
       plot=F
       
       if(plot){
-        plot(ENV_COVARS$lat.c)
-        plot(ENV_COVARS$long.c)
-        plot(ENV_COVARS$NED.c)     ## elevation
-        plot(ENV_COVARS$prcp.SumFal)   # time series of maps
-        plot(ENV_COVARS$prcp.WinSpr)   # time series
-        plot(ENV_COVARS$prcp.year)     # ts
-        plot(ENV_COVARS$sand0.c)     #??
-        plot(ENV_COVARS$sand2.c)
-        plot(ENV_COVARS$slope.c)
-        plot(ENV_COVARS$tmax)   # ts  
+        raster::plot(ENV_COVARS$lat.c)
+        raster::plot(ENV_COVARS$long.c)
+        raster::plot(ENV_COVARS$NED.c)     ## elevation
+        raster::plot(ENV_COVARS$prcp.SumFal)   # time series of maps
+        raster::plot(ENV_COVARS$prcp.WinSpr)   # time series
+        raster::plot(ENV_COVARS$prcp.year)     # ts
+        raster::plot(ENV_COVARS$sand0.c)     #??
+        raster::plot(ENV_COVARS$sand2.c)
+        raster::plot(ENV_COVARS$slope.c)
+        raster::plot(ENV_COVARS$tmax)   # ts  
       } 
+      
+      ##################
+      # IF NEEDED ASSEMBLE THE COVARIATES
+      ##################
+      
+      convert=F 
+      if(convert){
+        setwd(dirs$plaguemod$CovDir)
+        
+        load("EnvCov_stacks_smallPawnee_FUTURE.RData")
+        load("EnvCov_stacks_smallPawnee_PAST.RData")
+        load("EnvCov_stacks_smallPawnee.RData")
+        
+        ENV_COVARS <- list()
+        
+        ENV_COVARS$lat.c <- lat.c
+        ENV_COVARS$long.c <- long.c
+        ENV_COVARS$NED.c <- NED.c      # elevation 
+        ENV_COVARS$prcp.SumFal <- raster::brick(c(prcp.SumFal.past,prcp.SumFal,prcp.SumFal.f.r))
+        allyears <- as.numeric(unlist(regmatches(names(ENV_COVARS$prcp.SumFal), gregexpr("[[:digit:]]+", names(ENV_COVARS$prcp.SumFal)))))
+        names(ENV_COVARS$prcp.SumFal) <- allyears
+        
+        ENV_COVARS$prcp.WinSpr <- raster::brick(c(prcp.WinSpr.past,prcp.WinSpr,prcp.WinSpr.f.r))
+        names(ENV_COVARS$prcp.WinSpr) <- allyears
+        
+        ENV_COVARS$prcp.year <- raster::brick(c(prcp.year.past,prcp.year,prcp.year.f.r))
+        names(ENV_COVARS$prcp.year) <- allyears
+        
+        ENV_COVARS$sand0.c <- sand0.c
+        ENV_COVARS$sand2.c <- sand2.c
+        ENV_COVARS$slope.c <- slope.c
+        
+        ENV_COVARS$tmax <- raster::brick(c(tmax.past,tmax,tmax.f.r))
+        names(ENV_COVARS$tmax) <- allyears
+        
+        setwd(dirs$plaguemod$CovDir)
+        save(ENV_COVARS, file="EnvCov_smallPawnee.RData")   # was EnvCov_stacks_smallPawnee.RData
+        
+        rm(lat.c,long.c,NED.c,
+           prcp.SumFal.past,prcp.SumFal,prcp.SumFal.f.r,
+           prcp.WinSpr.past,prcp.WinSpr,prcp.WinSpr.f.r,
+           prcp.year.past,prcp.year,prcp.year.f.r,
+           sand0.c,sand2.c,slope.c,
+           tmax.past,tmax,tmax.f.r)
+      }
+      
       
       ###############
       # SET UP TEMPLATE RASTER
@@ -1292,7 +1350,7 @@ InitializeLandscape <- function(solid=F,fake=F,UserParams){   #env
       
       ## create template
       templateRaster <- raster::raster()   # template to create all other rasters for landscape of interest
-      extent(templateRaster) <- raster::extent(ENV_COVARS$lat.c) #Using smaller extent from covariates (snippet of Pawnee)
+      raster::extent(templateRaster) <- raster::extent(ENV_COVARS$lat.c) #Using smaller extent from covariates (snippet of Pawnee)
       raster::res(templateRaster) <- raster::res(ENV_COVARS$lat.c)   # set the correct resolution
       
       ###################

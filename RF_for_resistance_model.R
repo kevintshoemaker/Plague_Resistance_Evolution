@@ -11,15 +11,15 @@ NYEARS <- 50
 ############
 
 
-library(rgeos)
-library(rgdal)
-library(raster)
-library(gdistance)
-library(stringr)
+# library(rgeos)
+# library(rgdal)
+# library(raster)
+# library(gdistance)
+# library(stringr)
 
 KEVIN_LAPTOP <- FALSE #  
-KEVIN_OFFICEPC <- FALSE # 
-KEVIN_LAPTOP2 <- TRUE #  
+KEVIN_OFFICEPC <- TRUE  # FALSE # 
+KEVIN_LAPTOP2 <- FALSE  # TRUE #  
 
 if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
@@ -50,6 +50,7 @@ rfp1           #Random Forest (party) object
 setwd(dirs$plaguemod$CovDir)
 load("EnvCov_smallPawnee.RData")
 
+
 ##### DEFINE ENV COVARIATES
 
 plot=F
@@ -75,25 +76,66 @@ if(plot){
 convert=F 
 
 if(convert){
+  setwd(dirs$plaguemod$CovDir)
+  
+  load("EnvCov_stacks_smallPawnee_FUTURE.RData")
+  load("EnvCov_stacks_smallPawnee_PAST.RData")
+  load("EnvCov_stacks_smallPawnee2.RData")   # with 2016 added...
+  
   ENV_COVARS <- list()
   
   ENV_COVARS$lat.c <- lat.c
   ENV_COVARS$long.c <- long.c
-  ENV_COVARS$NED.c <- NED.c    
-  ENV_COVARS$prcp.SumFal <- prcp.SumFal
-  ENV_COVARS$prcp.WinSpr <- prcp.WinSpr
-  ENV_COVARS$prcp.year <- prcp.year
+  ENV_COVARS$NED.c <- NED.c      # elevation 
+  ENV_COVARS$prcp.SumFal <- raster::brick(c(prcp.SumFal.past,prcp.SumFal,prcp.SumFal.f.r))
+  allyears <- as.numeric(unlist(regmatches(names(ENV_COVARS$prcp.SumFal), gregexpr("[[:digit:]]+", names(ENV_COVARS$prcp.SumFal)))))
+  names(ENV_COVARS$prcp.SumFal) <- allyears
+
+  ENV_COVARS$prcp.WinSpr <- raster::brick(c(prcp.WinSpr.past,prcp.WinSpr,prcp.WinSpr.f.r))
+  names(ENV_COVARS$prcp.WinSpr) <- allyears
+  
+  ENV_COVARS$prcp.year <- raster::brick(c(prcp.year.past,prcp.year,prcp.year.f.r))
+  names(ENV_COVARS$prcp.year) <- allyears
+  
   ENV_COVARS$sand0.c <- sand0.c
   ENV_COVARS$sand2.c <- sand2.c
   ENV_COVARS$slope.c <- slope.c
-  ENV_COVARS$tmax <- tmax
+  
+  ENV_COVARS$tmax <- raster::brick(c(tmax.past,tmax,tmax.f.r))
+  names(ENV_COVARS$tmax) <- allyears
   
   setwd(dirs$plaguemod$CovDir)
   save(ENV_COVARS, file="EnvCov_smallPawnee.RData")   # was EnvCov_stacks_smallPawnee.RData
   
-  rm(lat.c,long.c,NED.c,prcp.SumFal,prcp.WinSpr,prcp.year,sand0.c,sand2.c,slope.c,tmax)
+  rm(lat.c,long.c,NED.c,
+     prcp.SumFal.past,prcp.SumFal,prcp.SumFal.f.r,
+     prcp.WinSpr.past,prcp.WinSpr,prcp.WinSpr.f.r,
+     prcp.year.past,prcp.year,prcp.year.f.r,
+     sand0.c,sand2.c,slope.c,
+     tmax.past,tmax,tmax.f.r)
 }
 
+
+add2016 <- FALSE
+if(add2016){
+  setwd(dirs$plaguemod$CovDir)
+  load("EnvCov_stacks_smallPawnee_2016.RData")
+  prcp.SumFal.2016 <- prcp.SumFal
+  prcp.WinSpr.2016 <- prcp.WinSpr
+  prcp.year.2016 <- prcp.year
+  tmax.2016 <- tmax
+
+  load("EnvCov_stacks_smallPawnee.RData")
+  prcp.SumFal <- raster::brick(c(prcp.SumFal,prcp.SumFal.2016))
+  prcp.WinSpr <- raster::brick(c(prcp.WinSpr,prcp.WinSpr.2016))
+  prcp.year <- raster::brick(c(prcp.year,prcp.year.2016))
+  tmax <- raster::brick(c(tmax,tmax.2016))
+  setwd(dirs$plaguemod$CovDir)
+  save(lat.c,long.c,NED.c,prcp.SumFal,prcp.WinSpr,prcp.year,tmax,sand0.c,sand2.c,slope.c, 
+       file="EnvCov_stacks_smallPawnee2.RData")   # was EnvCov_stacks_smallPawnee.RData
+  
+  rm(prcp.SumFal.2016,prcp.WinSpr.2016,prcp.year.2016,tmax.2016)
+}
 
 #######
 # MAKE TEMPLATE    # DONE

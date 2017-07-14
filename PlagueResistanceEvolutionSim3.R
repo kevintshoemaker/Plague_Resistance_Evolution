@@ -19,15 +19,15 @@ rm(list=ls())
 ## SIMULATION CONTROLS
 ############
 
-NYEARS <- 50
+NYEARS <- 56    # 1980 to 2036
 
 ############
 ## SET GLOBAL VARS
 ############
 
 KEVIN_LAPTOP <- FALSE #  
-KEVIN_OFFICEPC <- FALSE # 
-KEVIN_LAPTOP2 <- TRUE #  
+KEVIN_OFFICEPC <- TRUE # FALSE # 
+KEVIN_LAPTOP2 <- FALSE # TRUE #  
 
 if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
@@ -46,17 +46,25 @@ source("PlagueResistanceEvolution_FUNCTIONS.R")
 ############
 
 dirs <- SetUpDirectories()
+
+rm(GIT_DIR)
+
 num_cores <- parallel::detectCores() - 2   # for setting up cluster... leave one core free for windows background processes?
+
+num_cores <- 10
+
 
 ############
 ## SAMPLE FROM LATIN HYPERCUBE
 ############
 
-N_LHS_SAMPLES <- 4  # 200
+N_LHS_SAMPLES <- 100  # 200
 
 masterDF <- MakeLHSSamples(add=FALSE)
 
 rep=1
+
+fake=F
 
 ## note masterdf is written to data directory
 
@@ -85,7 +93,7 @@ doParallel::registerDoParallel(cl=cl)    # make the cluster
 # 
 # packagelist <- c("secr","igraph","raster")
 
-allsamples <- foreach(i = (300+1): nrow(masterDF)
+allsamples <- foreach(i = 1: nrow(masterDF)    # (300+1): nrow(masterDF)
                       # .export=objectlist,
                       # .packages = packagelist,
                       # .errorhandling=c("pass")
