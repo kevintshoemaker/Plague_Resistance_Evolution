@@ -35,13 +35,15 @@ HarvestData <- function(masterDF,dirs){
 # MAKE WORKER: FOR PARALLELIZATION
 ######################
 
-MakeWorker <- function(NYEARS, masterDF, dirs){
+MakeWorker <- function(NYEARS, masterDF, dirs, fake){
   
   force(NYEARS)  # not sure why this is necessary but whatever
   
   force(masterDF)
   
   force(dirs)
+  
+  force(fake)
   
   #library(raster)   # for now, load key packages (too much work to reference explicitly)
   
@@ -58,7 +60,7 @@ MakeWorker <- function(NYEARS, masterDF, dirs){
  
   
   Worker <- function(i){
-    DoSimulateResistancePar(rep=i,fake=F)
+    DoSimulateResistancePar(rep=i,fake=fake)
   }
   
   return(Worker) 

@@ -60,13 +60,23 @@ num_cores <- 6
 ## SAMPLE FROM LATIN HYPERCUBE
 ############
 
-N_LHS_SAMPLES <- 300  # 200
+N_LHS_SAMPLES <- 700  # 200
 
-masterDF <- MakeLHSSamples(add=FALSE)
+masterDF <- MakeLHSSamples(add=TRUE)    # add=FALSE
+ 
+#nrow(masterDF)
 
 rep=1
-
 fake=T
+
+
+oops <- FALSE    # if needed, recover the previous master dataframe...
+if(oops){
+  setwd(dirs$DATA_DIR)
+  nrow(masterDF2) <- read.csv("masterDF_prelim2017-07-14.csv")
+  masterDF <- masterDF2
+  rm(masterDF2)
+}
 
 ## note masterdf is written to data directory
 
@@ -95,7 +105,7 @@ doParallel::registerDoParallel(cl=cl)    # make the cluster
 # 
 # packagelist <- c("secr","igraph","raster")
 
-allsamples <- foreach(i = 1: nrow(masterDF)    # (300+1): nrow(masterDF)
+allsamples <- foreach(i = 301: nrow(masterDF)    # (300+1): nrow(masterDF)
                       # .export=objectlist,
                       # .packages = packagelist,
                       # .errorhandling=c("pass")
@@ -116,7 +126,7 @@ allsamples <- foreach(i = 1: nrow(masterDF)    # (300+1): nrow(masterDF)
   #SetUpWorkspace()
   #num_cores <- detectCores() - 1   # for setting up cluster... leave one core free for windows background processes?
   
-  temp <- MakeWorker(NYEARS, masterDF, dirs)(i)  #DoSimulateResistance(rep=i)    # simulate for these params... 
+  temp <- MakeWorker(NYEARS, masterDF, dirs, fake)(i)  #DoSimulateResistance(rep=i)    # simulate for these params... 
   
 }     ## end parallel for loop
 
