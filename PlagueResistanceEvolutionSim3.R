@@ -19,16 +19,16 @@ rm(list=ls())
 ## SIMULATION CONTROLS
 ############
 
-NYEARS <- 50    # 1980 to 2036
+NYEARS <- 56    # 1980 to 2036
 
 ############
 ## SET GLOBAL VARS
 ############
 
 KEVIN_LAPTOP <- FALSE #  
-KEVIN_OFFICEPC <- FALSE #  TRUE # 
+KEVIN_OFFICEPC <- TRUE # FALSE #  TRUE # 
 KEVIN_LAPTOP2 <- FALSE # TRUE #  
-MIRANDA <- TRUE
+MIRANDA <- FALSE # TRUE
 
 if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
@@ -53,27 +53,27 @@ rm(GIT_DIR)
 
 num_cores <- parallel::detectCores() - 2   # for setting up cluster... leave one core free for windows background processes?
 
-num_cores <- 6
+num_cores <- 10
 
 
 ############
 ## SAMPLE FROM LATIN HYPERCUBE
 ############
 
-N_LHS_SAMPLES <- 700  # 200
+N_LHS_SAMPLES <- 30  # 200
 
 masterDF <- MakeLHSSamples(add=TRUE)    # add=FALSE
  
 #nrow(masterDF)
 
 rep=1
-fake=T
+fake=F
 
 
 oops <- FALSE    # if needed, recover the previous master dataframe...
 if(oops){
   setwd(dirs$DATA_DIR)
-  nrow(masterDF2) <- read.csv("masterDF_prelim2017-07-14.csv")
+  masterDF2 <- read.csv("masterDF_prelim2017-07-14.csv")   # masterDF_prelim2017-07-14.csv
   masterDF <- masterDF2
   rm(masterDF2)
 }
@@ -105,7 +105,7 @@ doParallel::registerDoParallel(cl=cl)    # make the cluster
 # 
 # packagelist <- c("secr","igraph","raster")
 
-allsamples <- foreach(i = 301: nrow(masterDF)    # (300+1): nrow(masterDF)
+allsamples <- foreach(i = 101: nrow(masterDF)    # (300+1): nrow(masterDF)
                       # .export=objectlist,
                       # .packages = packagelist,
                       # .errorhandling=c("pass")
