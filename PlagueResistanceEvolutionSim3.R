@@ -147,6 +147,19 @@ if(!is.null(cl)) {
 
 
 ########################
+# MAKE MOVIES (if necessary)
+########################
+
+makemov <- FALSE
+
+if(makemov){
+  rep=2
+  for(rep in 1:nrow(masterDF)){
+    if(rep%%2==0) MakeMovie(rep)
+  }
+}
+
+########################
 # HARVEST DATA INTO A CONVENIENT FORMAT FOR ANALYSIS
 ########################
 
@@ -160,6 +173,12 @@ masterDF2 <- HarvestData(masterDF,dirs)
 
 ### use random forest?
 
+#### Read in the script from github
+
+source_github("https://raw.githubusercontent.com/kevintshoemaker/Random-Forest-Functions/master/","RF_Extensions.R")
+
+#library(coin)
+library(party)
 
 #Define catagorical variables as factors
 
@@ -202,16 +221,14 @@ cbind(pred.names,predictorNames)
 
 #### Define response variable
 
-response=  "ISEXT"   #  "ISRES"    # 
+response=  "ISEXT"   #"ISRES"    #    "ISRES"    # 
 
 #### Define our formula (response ~ predictors)
 
 formula1 <- as.formula(paste(response,"~",paste(pred.names,collapse="+")))
 
 
-#### Read in the script from github
 
-source_github("https://raw.githubusercontent.com/kevintshoemaker/Random-Forest-Functions/master/","RF_Extensions.R")
 
 #source("C:\\Users\\Kevin\\GIT\\Random-Forest-Functions\\RF_Extensions.R")   # change to your script locations
 
