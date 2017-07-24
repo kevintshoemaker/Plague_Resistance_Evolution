@@ -236,6 +236,7 @@ formula1 <- as.formula(paste(response,"~",paste(pred.names,collapse="+")))
 
 res.tr <- ctree(formula=formula1, data=df, controls = ctree_control(mincriterion = 0.6,maxdepth = 3))
 
+graphics.off()
 plot(res.tr)
 
 summary(res.tr)
