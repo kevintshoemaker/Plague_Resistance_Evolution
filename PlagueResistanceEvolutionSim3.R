@@ -147,7 +147,7 @@ if(!is.null(cl)) {
 
 
 ########################
-# MAKE MOVIES (if necessary)
+# MAKE MOVIES POST HOC (if necessary)
 ########################
 
 makemov <- FALSE
@@ -182,8 +182,11 @@ library(party)
 
 #Define catagorical variables as factors
 
-masterDF2$ISRES <- as.factor(masterDF2$ISRES)
-masterDF2$ISEXT <- as.factor(masterDF2$ISEXT)
+
+masterDF2 <- na.omit(masterDF2)
+
+masterDF2$ISRES <- as.logical(masterDF2$ISRES)    # as.factor(masterDF2$ISRES)
+masterDF2$ISEXT <- as.logical(masterDF2$ISEXT) # as.factor
 
 masterDF2$DOMINANCE <- as.factor(masterDF2$DOMINANCE)
 
@@ -221,7 +224,7 @@ cbind(pred.names,predictorNames)
 
 #### Define response variable
 
-response=  "ISEXT"   #"ISRES"    #    "ISRES"    # 
+response=  "ISRES"    # "ISEXT"   #   "ISRES"    # 
 
 #### Define our formula (response ~ predictors)
 
@@ -234,7 +237,7 @@ formula1 <- as.formula(paste(response,"~",paste(pred.names,collapse="+")))
 
 ##### CONDITIONAL INFERENCE TREE  ##################
 
-res.tr <- ctree(formula=formula1, data=df, controls = ctree_control(mincriterion = 0.6,maxdepth = 3))
+res.tr <- ctree(formula=formula1, data=df, controls = ctree_control(mincriterion = 0.85,maxdepth = 3))
 
 graphics.off()
 plot(res.tr)
@@ -245,9 +248,9 @@ summary(res.tr)
 ###############  CFOREST #################
 
 cforestControl <- cforest_unbiased(ntree=1000,mtry=5)   # change back to 500!!
-cforestControl@fraction <- 0.75
+cforestControl@fraction <- 0.6
 
-cforestControl@gtctrl@mincriterion <- 0.5
+cforestControl@gtctrl@mincriterion <- 0.85
 
 rf_model1 <- cforest(formula1, controls=cforestControl, data=df)
 
@@ -268,6 +271,7 @@ barplot(height=model1_importance[order(model1_importance,decreasing = FALSE)],
 
 ##### Make univariate plots of the relationships- plot all relationships at once
 
+graphics.off()
 RF_UnivariatePlots(object=rf_model1, varimp=model1_importance, data=df,  #   
                    predictors=pred.names, labels=predictorNames, allpredictors=pred.names,plot.layout=c(2,2))
 
@@ -275,6 +279,7 @@ RF_UnivariatePlots(object=rf_model1, varimp=model1_importance, data=df,  #
 
 ##### Make univariate plots of the relationships- plot one relationship at a time
 
+graphics.off()
 RF_UnivariatePlots(object=rf_model1, varimp=model1_importance, data=df,  #   
                    predictors=pred.names[7], labels=predictorNames[7], allpredictors=pred.names,plot.layout=c(1,1))
 

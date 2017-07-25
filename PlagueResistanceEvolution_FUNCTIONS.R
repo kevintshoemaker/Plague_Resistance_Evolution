@@ -85,10 +85,10 @@ DoSimulateResistancePar <- function(rep=1,fake=F){
   ############
   
   dmat <- list()
-  dmat[[1]] <- matrix(c(1,0,0, 1,0,0), nrow=2,ncol=3,byrow = T)  # dominant
+  dmat[[1]] <- matrix(c(1,0,0, 1,0,0), nrow=2,ncol=3,byrow = T)  # recessive
   dmat[[2]] <- matrix(c(1,1,0, 1,0,0), nrow=2,ncol=3,byrow = T)  # gene 1 dominant
   dmat[[3]] <- matrix(c(1,0,0, 1,1,0), nrow=2,ncol=3,byrow = T)  # gene 2 dominant
-  dmat[[4]] <- matrix(c(1,1,0, 1,1,0), nrow=2,ncol=3,byrow = T)  # recessive
+  dmat[[4]] <- matrix(c(1,1,0, 1,1,0), nrow=2,ncol=3,byrow = T)  # dominant
   
   UserParams <- DefineUserParams(PER_SUITABLE=masterDF$PER_SUITABLE[rep],SNUGGLE=masterDF$SNUGGLE[rep],NFOCI=1,MAXDISPERSAL=500,BASELINE_DISPERSAL=0.05,
                                  MAXDISPERSAL_PLAGUE = 1000,PLAGUE_DISPERSAL=masterDF$PLAGUE_DISPERSAL[rep], MAXDENS = masterDF$MAXDENS[rep],
@@ -804,7 +804,7 @@ DefineUserParams <- function(PER_SUITABLE=0.4,SNUGGLE=0.75,NFOCI=1,MAXDISPERSAL=
                              MAXDISPERSAL_PLAGUE = 1000,PLAGUE_DISPERSAL=0.95, MAXDENS = 100,
                              MINDENS = 15, BASELINE_MEANSURV = 0.6, BASELINE_PLAGUESURV=0.05,
                              BASELINE_PLAGUESURV_RESIST=0.5,BASELINE_MEANFEC=3.2,
-                             FITNESS_COST=c(0.1,0.05),INITFREQ=c(0.09,0.1),DOMINANCE=dmat){
+                             FITNESS_COST=c(0.1,0.05),INITFREQ=c(0.09,0.1),DOMINANCE=dmat[[1]]){
     
   ############
   ## DEFINE RANGE OF POSSIBLE SCENARIOS  [not implemented yet]
