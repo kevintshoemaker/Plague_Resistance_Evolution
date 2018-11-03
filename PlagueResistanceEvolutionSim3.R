@@ -62,12 +62,12 @@ num_cores <- 10
 
 N_LHS_SAMPLES <- 30  # 200
 
-masterDF <- MakeLHSSamples(add=TRUE)    # add=FALSE
+masterDF <- MakeLHSSamples(add=FALSE)    # add=FALSE
  
 #nrow(masterDF)
 
 rep=1
-fake=F
+fake=T
 
 
 oops <- FALSE    # if needed, recover the previous master dataframe...
@@ -77,6 +77,59 @@ if(oops){
   masterDF <- masterDF2
   rm(masterDF2)
 }
+
+
+########### Read in (simulated) genetics data
+
+all_loci <- read.table("allele-freqs_10pops.txt",header=TRUE)
+key_markers <- paste("Marker",c(10,32,43,50,88,19,81,96,115,127,6,3,48,102,111),sep="")
+bg <- sample(setdiff(colnames(all_loci[,-c(1,2)]),key_markers),5,replace=FALSE)
+resistance_fingerprint <- all_loci[all_loci$Allele==2,c(key_markers,bg)]
+row.names(resistance_fingerprint) <- all_loci$pop[as.numeric(row.names(resistance_fingerprint))]
+resistance_fingerprint
+
+
+###############
+# code the rules for resistance
+
+rules_for_resistance <- list()
+rules_for_resistance[[1]] <- list()
+rules_for_resistance[[1]]$loci <- paste("Marker",c(10,32,43,50,88),sep="")
+rules_for_resistance[[1]]$rules <- do.call(sprintf,c(list("(%s|%s|%s|%s|%s)"),as.list(rules_for_resistance[[1]]$loci)))
+
+rules_for_resistance[[2]] <- list()
+rules_for_resistance[[2]]$loci <- paste("Marker",c(6,19,81,96,115,127),sep="")
+rules_for_resistance[[2]]$rules <- do.call(sprintf,c(list("(%s)&(%s|%s|%s|%s|%s)"),as.list(rules_for_resistance[[2]]$loci)))
+
+rules_for_resistance[[3]] <- list()
+rules_for_resistance[[3]]$loci <- paste("Marker",c(3,48,102,111),sep="")
+rules_for_resistance[[3]]$rules <- do.call(sprintf,c(list("(%s&%s&%s&%s)"),as.list(rules_for_resistance[[3]]$loci)))
+
+rules_for_resistance
+
+###############
+# code the dominance structure
+
+temp <- matrix(0,nrow=ncol(resistance_fingerprint),ncol=3)
+colnames(temp) <- c("2x(rr)","1x(rs)","0x(ss)")
+rownames(temp) <- colnames(resistance_fingerprint)
+temp
+
+atleastone <- paste("Marker",c(3,48,102,111,6),sep="") 
+needstwo <- setdiff(colnames(resistance_fingerprint),atleastone)
+alo_ndx <- match(atleastone,colnames(resistance_fingerprint))
+nt_ndx <- match(needstwo,colnames(resistance_fingerprint))
+
+temp[alo_ndx,] <- matrix(rep(c(1,1,0),times=length(alo_ndx)),ncol=3,byrow = T)
+temp[nt_ndx,] <- matrix(rep(c(1,0,0),times=length(nt_ndx)),ncol=3,byrow = T)
+
+dmat <- temp
+
+# Here are some rulesets that guided my thinking:
+#   1) If an individual is homozygous for allele 2 at locus 10, 32, 43, 50, or 88, that individual will be resistant
+# 2) If an individual is homozygous for allele 2 at locus 19, 81, 96, 115, or 127 and has at least one copy of allele 2 at locus 6, that individual will be resistant
+# 3) If an individual has at least one copy of allele 2 at locus 3, 48 102 and 111, that individual will be resistant
+
 
 ## note masterdf is written to data directory
 

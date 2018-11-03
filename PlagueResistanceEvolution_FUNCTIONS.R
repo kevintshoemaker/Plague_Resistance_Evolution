@@ -84,17 +84,30 @@ DoSimulateResistancePar <- function(rep=1,fake=F){
   ## USER-DEFINED VARIABLES
   ############
   
-  dmat <- list()
-  dmat[[1]] <- matrix(c(1,0,0, 1,0,0), nrow=2,ncol=3,byrow = T)  # recessive
-  dmat[[2]] <- matrix(c(1,1,0, 1,0,0), nrow=2,ncol=3,byrow = T)  # gene 1 dominant
-  dmat[[3]] <- matrix(c(1,0,0, 1,1,0), nrow=2,ncol=3,byrow = T)  # gene 2 dominant
-  dmat[[4]] <- matrix(c(1,1,0, 1,1,0), nrow=2,ncol=3,byrow = T)  # dominant
+  # dmat <- list()     # define dominance structure
+  # dmat[[1]] <- matrix(c(1,0,0, 1,0,0), nrow=2,ncol=3,byrow = T)  # recessive
+  # dmat[[2]] <- matrix(c(1,1,0, 1,0,0), nrow=2,ncol=3,byrow = T)  # gene 1 dominant
+  # dmat[[3]] <- matrix(c(1,0,0, 1,1,0), nrow=2,ncol=3,byrow = T)  # gene 2 dominant
+  # dmat[[4]] <- matrix(c(1,1,0, 1,1,0), nrow=2,ncol=3,byrow = T)  # dominant
   
-  UserParams <- DefineUserParams(PER_SUITABLE=masterDF$PER_SUITABLE[rep],SNUGGLE=masterDF$SNUGGLE[rep],NFOCI=1,MAXDISPERSAL=500,BASELINE_DISPERSAL=0.05,
-                                 MAXDISPERSAL_PLAGUE = 1000,PLAGUE_DISPERSAL=masterDF$PLAGUE_DISPERSAL[rep], MAXDENS = masterDF$MAXDENS[rep],
-                                 MINDENS = 15, BASELINE_MEANSURV = 0.6, BASELINE_PLAGUESURV=masterDF$BASELINE_PLAGUESURV[rep],
-                                 BASELINE_PLAGUESURV_RESIST=0.5,BASELINE_MEANFEC=masterDF$BASELINE_MEANFEC[rep],
-                                 FITNESS_COST=rep(masterDF$FITNESS_COST[rep],2),INITFREQ=rep(masterDF$INITFREQ[rep],2),DOMINANCE=dmat[[masterDF$DOMINANCE[rep]]])
+  UserParams <- DefineUserParams(PER_SUITABLE=masterDF$PER_SUITABLE[rep],
+                                 SNUGGLE=masterDF$SNUGGLE[rep],
+                                 NFOCI=1,
+                                 MAXDISPERSAL=500,
+                                 BASELINE_DISPERSAL=0.05,
+                                 MAXDISPERSAL_PLAGUE = 1000,
+                                 PLAGUE_DISPERSAL=masterDF$PLAGUE_DISPERSAL[rep], 
+                                 MAXDENS = masterDF$MAXDENS[rep],
+                                 MINDENS = 15, 
+                                 BASELINE_MEANSURV = 0.6, 
+                                 BASELINE_PLAGUESURV=masterDF$BASELINE_PLAGUESURV[rep],
+                                 BASELINE_PLAGUESURV_RESIST=0.5,
+                                 BASELINE_MEANFEC=masterDF$BASELINE_MEANFEC[rep],
+                                 FITNESS_COST=rnorm(ncol(resistance_fingerprint),masterDF$FITNESS_COST[rep],0.01),
+                                 INITFREQ=rep(masterDF$INITFREQ[rep],2),
+                                 DOMINANCE=dmat,    #  dmat[[masterDF$DOMINANCE[rep]]],
+                                 GENETICS_DF=resistance_fingerprint,
+                                 RES_RULES=rules_for_resistance)
   
   #assign(x="UserParams",value=UserParams, envir = env)
   
@@ -724,7 +737,7 @@ specifyLHSParam <- function(paramslist,name,type,lb,ub){
 # BASELINE_PLAGUESURV_RESIST=0.5,BASELINE_MEANFEC=3.2,
 # FITNESS_COST=c(0.1,0.05),INITFREQ=c(0.09,0.1),DOMINANCE=dmat
 
-MakeLHSSamples <- function(add){
+MakeLHSSamples <- function(add=T){
   
   LHSParms <- list()    # initialize the container for parameter bounds
   
@@ -798,13 +811,14 @@ MakeLHSSamples <- function(add){
 # This function defines a UserParams variable which is passed around and stores the user-defined parameters for the simulation. 
 #   Note that many of these parameters can also be subject to global sensitivity analysis.
 
-dmat <- matrix(c(1,1,0, 1,0,0), nrow=2,ncol=3,byrow = T)
+#dmat <- matrix(c(1,1,0, 1,0,0), nrow=2,ncol=3,byrow = T)
 
 DefineUserParams <- function(PER_SUITABLE=0.4,SNUGGLE=0.75,NFOCI=1,MAXDISPERSAL=500,BASELINE_DISPERSAL=0.05,
                              MAXDISPERSAL_PLAGUE = 1000,PLAGUE_DISPERSAL=0.95, MAXDENS = 100,
                              MINDENS = 15, BASELINE_MEANSURV = 0.6, BASELINE_PLAGUESURV=0.05,
                              BASELINE_PLAGUESURV_RESIST=0.5,BASELINE_MEANFEC=3.2,
-                             FITNESS_COST=c(0.1,0.05),INITFREQ=c(0.09,0.1),DOMINANCE=dmat[[1]]){
+                             FITNESS_COST=rnorm(ncol(resistance_fingerprint),masterDF$FITNESS_COST[rep],0.01),INITFREQ=c(0.09,0.1),DOMINANCE=dmat[[1]],GENETICS_DF=resistance_fingerprint,
+                             RES_RULES=rules_for_resistance){
     
   ############
   ## DEFINE RANGE OF POSSIBLE SCENARIOS  [not implemented yet]
@@ -839,6 +853,8 @@ DefineUserParams <- function(PER_SUITABLE=0.4,SNUGGLE=0.75,NFOCI=1,MAXDISPERSAL=
   
   # define the percent of the landscape that is suitable
   UserParams[["Landscape"]]$PER_SUITABLE <- PER_SUITABLE
+  
+  UserParams[["Landscape"]]$NPOPS <- nrow(GENETICS_DF)
   
   #########
   # defining the species biology:
@@ -934,30 +950,29 @@ DefineUserParams <- function(PER_SUITABLE=0.4,SNUGGLE=0.75,NFOCI=1,MAXDISPERSAL=
   
   UserParams[["Genetics"]] <- list()
   
-  UserParams[["Genetics"]]$NGENES <- 2
+  UserParams[["Genetics"]]$NGENES <- ncol(GENETICS_DF)
   
-  UserParams[["Genetics"]]$NWAYS_OF_GETTING <- 1   # ways of getting resistance
-  UserParams[["Genetics"]]$RESISTANCE_SCENARIOS <- list()
-  UserParams[["Genetics"]]$RESISTANCE_SCENARIOS[[1]] <- c("factor1","factor2")   # for now, needs all factors! 
-  names(UserParams[["Genetics"]]$RESISTANCE_SCENARIOS[[1]]) <-c("AND","AND")   # names follow boolean conventions. In this case, both factors are required for resistance
+  UserParams[["Genetics"]]$NWAYS_OF_GETTING <- length(RES_RULES)   # ways of getting resistance
+  UserParams[["Genetics"]]$RESISTANCE_SCENARIOS <- RES_RULES
+
+  #UserParams[["Genetics"]]$FITNESS_COST <- numeric(UserParams[["Genetics"]]$NGENES)
   
-  UserParams[["Genetics"]]$FITNESS_COST <- numeric(UserParams[["Genetics"]]$NGENES)
+  UserParams[["Genetics"]]$FITNESS_COST <- FITNESS_COST     # fitness cost 
   
-  UserParams[["Genetics"]]$FITNESS_COST[1] <- FITNESS_COST[1]     # fitness cost of the first gene   0.1
-  UserParams[["Genetics"]]$FITNESS_COST[1] <- FITNESS_COST[2]     # fitness cost of the second gene   0.05
+  #UserParams[["Genetics"]]$INITFREQ <- matrix(0,nrow=UserParams[["Landscape"]]$NPOPS,ncol=UserParams[["Genetics"]]$NGENES)
   
-  UserParams[["Genetics"]]$INITFREQ <- numeric(UserParams[["Genetics"]]$NGENES)
-  UserParams[["Genetics"]]$INITFREQ[1] <- INITFREQ[1]  #0.09
-  UserParams[["Genetics"]]$INITFREQ[2] <- INITFREQ[2] #  0.1
+  UserParams[["Genetics"]]$INITFREQ <- GENETICS_DF
+  # UserParams[["Genetics"]]$INITFREQ[1] <- INITFREQ[1]  #0.09
+  # UserParams[["Genetics"]]$INITFREQ[2] <- INITFREQ[2] #  0.1
   
-  UserParams[["Genetics"]]$INITFREQ_SD <- 0.03     # degree of variation in initial frequency of resistance.
+  UserParams[["Genetics"]]$INITFREQ_SD <- 0.05     # degree of variation in initial frequency of resistance.
   
-  temp <- matrix(0,nrow=UserParams[["Genetics"]]$NGENES,ncol=3)
-  colnames(temp) <- c("2x(rr)","1x(rs)","0x(ss)")
-  UserParams[["Genetics"]]$DOMINANCE <- temp
-  UserParams[["Genetics"]]$DOMINANCE[1,] <- DOMINANCE[1,]   # dominant
-  UserParams[["Genetics"]]$DOMINANCE[2,] <- DOMINANCE[2,]  # recessive
-  
+  # temp <- matrix(0,nrow=UserParams[["Genetics"]]$NGENES,ncol=3)
+  # colnames(temp) <- c("2x(rr)","1x(rs)","0x(ss)")
+  UserParams[["Genetics"]]$DOMINANCE <- DOMINANCE
+  # UserParams[["Genetics"]]$DOMINANCE[1,] <- DOMINANCE[1,]   # dominant
+  # UserParams[["Genetics"]]$DOMINANCE[2,] <- DOMINANCE[2,]  # recessive
+  # 
   return(UserParams)
 }
 
@@ -1264,8 +1279,15 @@ InitializeLandscape <- function(solid=F,fake=F,UserParams){   #env
       
       # plot(tempmask)
       
-      temppatches <- secr::randomHabitat(mask=tempmask, p = 0.4, A = UserParams$Landscape$PER_SUITABLE, directions = 4, minpatch = 20,
-                                   drop = FALSE, covname = "habitat", plt = FALSE)
+      npatches <- 0
+      while(npatches!=UserParams$Landscape$NPOPS){
+        temppatches <- secr::randomHabitat(mask=tempmask, p = 0.4, A = UserParams$Landscape$PER_SUITABLE, directions = 4, minpatch = 20,
+                                           drop = FALSE, covname = "habitat", plt = FALSE)
+        patchRaster <- raster::setValues(templateRaster,values=secr::covariates(temppatches)$habitat)
+        patchRaster <- raster::reclassify(patchRaster,rcl=c(-Inf,0.5,NA, 0.6,Inf,1))   # raster of habitat patches
+        npatches <- cellStats(raster::clump(patchRaster,directions=4,gaps=F),max)   # determine unique ID for each patch...
+      }
+
       
       #BaseLandscape$patchRaster <- templateRaster
       #patchvals <- as.vector(t(as.matrix(covariates(temppatches)$habitat)))
