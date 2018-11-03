@@ -2387,12 +2387,13 @@ GetInitFreqs <- function(UserParams,BaseLandscape){
   i=1
   for(i in 1:UserParams$Genetics$NGENES){
     name <- sprintf("gene%s",i)
-    temp <- rnorm(BaseLandscape$nPatches,UserParams$Genetics$INITFREQ[1],UserParams$Genetics$INITFREQ_SD[1])
-    temp <- ifelse(temp<0,0.01,temp)
+    temp <- rnorm(BaseLandscape$nPatches,UserParams$Genetics$INITFREQ[,1],UserParams$Genetics$INITFREQ_SD[1])
+    temp <- ifelse(temp<=0,0.01,temp)
+    temp <- ifelse(temp>=1,0.99,temp)
     InitFreqList[[name]] <- raster::reclassify(BaseLandscape$patchIDRaster,rcl=cbind(c(1:BaseLandscape$nPatches),temp))
   }
   
-  #plot(InitFreqList[["gene1"]])
+  #plot(InitFreqList[["marker10"]])
   InitFreqList <- raster::stack(InitFreqList)
   
   #plot(InitFreqList)
