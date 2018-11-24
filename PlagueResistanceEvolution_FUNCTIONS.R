@@ -619,11 +619,13 @@ SetUpDirectories <- function(){
   if(KEVIN_LAPTOP) dirs$BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
   if(KEVIN_OFFICEPC) dirs$BASE_DIR <- "E:\\Dropbox\\PlagueModeling\\ResistanceEvolution"
   if(KEVIN_LAPTOP2) dirs$BASE_DIR <- "C:\\Users\\KevinT_Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
+  if(KEVIN_LAPTOP3) dirs$BASE_DIR <- "C:\\Users\\Kevin\\Dropbox\\PlagueModeling\\ResistanceEvolution"
   if(MIRANDA) dirs$BASE_DIR <- "C:\\PlagueResistance"
 
   if(KEVIN_OFFICEPC) dirs$BASE_DIR2 <- "E:\\ResistanceEvolution"
   if(KEVIN_LAPTOP) dirs$BASE_DIR2 <- "C:\\ResistanceEvolution" 
   if(KEVIN_LAPTOP2) dirs$BASE_DIR2 <- "C:\\ResistanceEvolution"
+  if(KEVIN_LAPTOP3) dirs$BASE_DIR2 <- "C:\\ResistanceEvolution"
   if(MIRANDA) dirs$BASE_DIR2 <- "C:\\PlagueResistance"
   
   dirs$plaguemod <- list()
@@ -742,7 +744,7 @@ MakeLHSSamples <- function(add=T){
   LHSParms <- list()    # initialize the container for parameter bounds
   
   ####  PER_SUITABLE
-  LHSParms <- specifyLHSParam(LHSParms,"PER_SUITABLE",type="CONT",lb=0.1,ub=1)
+  LHSParms <- specifyLHSParam(LHSParms,"PER_SUITABLE",type="CONT",lb=0.1,ub=0.4)
   
   #### SNUGGLE
   LHSParms <- specifyLHSParam(LHSParms,"SNUGGLE",type="CONT",lb=0.01,ub=0.99)
@@ -855,6 +857,7 @@ DefineUserParams <- function(PER_SUITABLE=0.4,SNUGGLE=0.75,NFOCI=1,MAXDISPERSAL=
   UserParams[["Landscape"]]$PER_SUITABLE <- PER_SUITABLE
   
   UserParams[["Landscape"]]$NPOPS <- nrow(GENETICS_DF)
+
   
   #########
   # defining the species biology:
@@ -954,6 +957,8 @@ DefineUserParams <- function(PER_SUITABLE=0.4,SNUGGLE=0.75,NFOCI=1,MAXDISPERSAL=
   
   UserParams[["Genetics"]]$NWAYS_OF_GETTING <- length(RES_RULES)   # ways of getting resistance
   UserParams[["Genetics"]]$RESISTANCE_SCENARIOS <- RES_RULES
+  
+  UserParams[["Genetics"]]$GENE_NAMES <- gsub("Marker","gene",names(GENETICS_DF))
 
   #UserParams[["Genetics"]]$FITNESS_COST <- numeric(UserParams[["Genetics"]]$NGENES)
   
@@ -1285,7 +1290,7 @@ InitializeLandscape <- function(solid=F,fake=F,UserParams){   #env
                                            drop = FALSE, covname = "habitat", plt = FALSE)
         patchRaster <- raster::setValues(templateRaster,values=secr::covariates(temppatches)$habitat)
         patchRaster <- raster::reclassify(patchRaster,rcl=c(-Inf,0.5,NA, 0.6,Inf,1))   # raster of habitat patches
-        npatches <- cellStats(raster::clump(patchRaster,directions=4,gaps=F),max)   # determine unique ID for each patch...
+        npatches <- raster::cellStats(raster::clump(patchRaster,directions=4,gaps=F),max)   # determine unique ID for each patch...
       }
 
       
@@ -2238,27 +2243,46 @@ doAllee <- function(){
 
 # this function takes gene frequencies and converts to "factor" frequencies...
 Gene2Factor <- function(UserParams,FreqList){  # FreqList
+  genenames <- names(FreqList)
   newlist <- list()
   gene=1
-  for(gene in 1:UserParams$Genetics$NGENES){
-    name = sprintf("gene%s",gene)
-    name2 = sprintf("factor%s",gene)
-    newlist[[name2]] =  FreqList[[name]]^2 * UserParams$Genetics$DOMINANCE[gene,1] +
-      (2*FreqList[[name]]*(1-FreqList[[name]])) * UserParams$Genetics$DOMINANCE[gene,2]
+  for(gene in 1:UserParams$Genetics$NGENES){   # first look at dominance
+    name = genenames[gene]  #sprintf("gene%s",genenames[gene])
+    name2 = gsub("gene","Marker",genenames[gene])  #sprintf("Marker%s",gene)
+    newlist[[name2]] =  FreqList[[name]]^2 * UserParams$Genetics$DOMINANCE[name2,1] +
+      (2*FreqList[[name]]*(1-FreqList[[name]])) * UserParams$Genetics$DOMINANCE[name2,2]
   }
-  newlist <- raster::stack(newlist)
-  return(newlist)
+                  # then look at factors
+  newlist2 <- list()
+  factor=1
+  for(factor in 1:UserParams$Genetics$NWAYS_OF_GETTING){
+    name = sprintf("factor%s",factor)
+    genestomonitor <- UserParams$Genetics$RESISTANCE_SCENARIOS[[factor]]$loci
+    rules <- UserParams$Genetics$RESISTANCE_SCENARIOS[[factor]]$rules
+    newlist2[[name]] <- with(newlist,eval(parse(text=rules)))        # use with and then run the analysis
+  }
+  
+  newlist3 <- raster::stack(newlist2)
+  return(newlist3)
 }
 
-# this function takes gene frequencies and abundances and converts to resistant freqs and susceptible freqs...
+##########
+# start here
+##########
+
+## need to compute overlap among resistance categories? Otherwise we won't be able to add up the resistance genes contributing to each factor! 
+
+#### need to change this. First loop through resistance factors, then loop through genes. Each time, compute the total genes in the resistant pool...
+
+# this function takes resistance factor frequencies and abundances and converts to resistant freqs and susceptible freqs...
 StrFreqFunc <- function(DensRaster,ResistRaster,FreqList,UserParams){
   reslist <- list()
   suslist <- list()
   #  temp <- DensRaster*F
+  PerHet <- ((2/FreqList)-2)/(((2/FreqList)-2)+1)    # percent heterozygotes for dominant genes in resistant pool
   gene=1
-  PerHet <- ((2/FreqList)-2)/(((2/FreqList)-2)+1)    # percent heterozygotes for dominant factors in resistant pool
   for(gene in 1:UserParams$Genetics$NGENES){
-    name = sprintf("gene%s",gene)
+    name = UserParams$Genetics$GENE_NAMES[gene] #sprintf("gene%s",gene)
     suslist[[name]] <- 2*DensRaster*FreqList[[name]]  # total resistance alleles in the population
     reslist[[name]] <- raster::reclassify(FreqList[[name]],rcl=c(-Inf,Inf,0))
     
@@ -2285,12 +2309,16 @@ StrFreqFunc <- function(DensRaster,ResistRaster,FreqList,UserParams){
   # assign(x="suslist",value=suslist, envir = env)   # assign the variable to the global environment
 }
 
-resistfunc <- function(ngenes=UserParams$Genetics$NGENES){      # this function assumes that all factors are needed for resistance                    
-  nargs <- ngenes
+resistfunc <- function(nfacs=UserParams$Genetics$NWAYS_OF_GETTING){      # this function assumes that all factors are needed for resistance                    
+  nargs <- nfacs
   arguments <- paste("X",c(1:nargs),sep="")
   arguments2 <- paste(arguments, collapse=",")
   arguments3 <- paste(arguments, collapse="*")
-  expression <- sprintf("function(%s) %s ",arguments2,arguments3)
+  temp <- rep("(1-%s)",nfacs)
+  temp2 <- paste(temp,collapse="*")
+  string <- sprintf("1-(%s)",temp2)
+  arguments4 <- do.call(sprintf,c(list(string),as.list(arguments)))
+  expression <- sprintf("function(%s) %s ",arguments2,arguments4)
   eval(parse(text=expression))
 }
 
@@ -2298,9 +2326,9 @@ resistfunc <- function(ngenes=UserParams$Genetics$NGENES){      # this function 
 #UserParams$Genetics$RESISTANCE_SCENARIOS[[1]]
 
 
-IsResistant <- function(DensRaster,FreqList,fungen,UserParams){
+IsResistant <- function(DensRaster,FreqList,fungen=resistfunc,UserParams){
   FactorList <- Gene2Factor(UserParams,FreqList)  # FreqList
-  temp <- raster::overlay(FactorList,fun=fungen(UserParams$Genetics$NGENES)) #round(InitDensRaster*InitFreq[["gene1"]])   # freq of resist for each grid cell
+  temp <- raster::overlay(FactorList,fun=fungen(UserParams$Genetics$NWAYS_OF_GETTING)) #round(InitDensRaster*InitFreq[["gene1"]])   # freq of resist for each grid cell
   ResistRaster <- raster::overlay(DensRaster,temp,fun=function(x,y) x*y)      # numbers of resistant individuals in each grid cell
   temp <- StrFreqFunc(DensRaster,ResistRaster,FreqList,UserParams) # returns "suslist" and "reslist" to global env
   
@@ -2386,8 +2414,9 @@ GetInitFreqs <- function(UserParams,BaseLandscape){
   
   i=1
   for(i in 1:UserParams$Genetics$NGENES){
-    name <- sprintf("gene%s",i)
-    temp <- rnorm(BaseLandscape$nPatches,UserParams$Genetics$INITFREQ[,1],UserParams$Genetics$INITFREQ_SD[1])
+    genename <- as.numeric(gsub("Marker","",names(UserParams$Genetics$INITFREQ)[i]))
+    name <- sprintf("gene%s",genename)
+    temp <- rnorm(BaseLandscape$nPatches,UserParams$Genetics$INITFREQ[,i],UserParams$Genetics$INITFREQ_SD[1])
     temp <- ifelse(temp<=0,0.01,temp)
     temp <- ifelse(temp>=1,0.99,temp)
     InitFreqList[[name]] <- raster::reclassify(BaseLandscape$patchIDRaster,rcl=cbind(c(1:BaseLandscape$nPatches),temp))

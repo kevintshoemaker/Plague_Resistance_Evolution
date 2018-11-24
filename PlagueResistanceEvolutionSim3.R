@@ -26,13 +26,15 @@ NYEARS <- 56    # 1980 to 2036
 ############
 
 KEVIN_LAPTOP <- FALSE #  
-KEVIN_OFFICEPC <- TRUE # FALSE #  TRUE # 
-KEVIN_LAPTOP2 <- FALSE # TRUE #  
+KEVIN_OFFICEPC <- FALSE # FALSE #  TRUE # 
+KEVIN_LAPTOP2 <- FALSE # TRUE #
+KEVIN_LAPTOP3 <- TRUE #
 MIRANDA <- FALSE # TRUE
 
 if(KEVIN_LAPTOP) GIT_DIR <- "C:\\Users\\Kevin\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_OFFICEPC) GIT_DIR <- "E:\\GIT\\Plague_Resistance_Evolution"
 if(KEVIN_LAPTOP2) GIT_DIR <- "C:\\Users\\KevinT_Kevin\\Documents\\GitHub\\Plague_Resistance_Evolution"
+if(KEVIN_LAPTOP3) GIT_DIR <- "C:\\Users\\Kevin\\Documents\\GitHub\\Plague_Resistance_Evolution"
 if(MIRANDA) GIT_DIR <- "C:\\Users\\kshoemaker\\Documents\\GitHub\\Plague_Resistance_Evolution"
 
 #####################
@@ -53,7 +55,7 @@ rm(GIT_DIR)
 
 num_cores <- parallel::detectCores() - 2   # for setting up cluster... leave one core free for windows background processes?
 
-num_cores <- 10
+#num_cores <- 10
 
 
 ############
@@ -95,15 +97,15 @@ resistance_fingerprint
 rules_for_resistance <- list()
 rules_for_resistance[[1]] <- list()
 rules_for_resistance[[1]]$loci <- paste("Marker",c(10,32,43,50,88),sep="")
-rules_for_resistance[[1]]$rules <- do.call(sprintf,c(list("(%s|%s|%s|%s|%s)"),as.list(rules_for_resistance[[1]]$loci)))
+rules_for_resistance[[1]]$rules <- do.call(sprintf,c(list("1-((1-%s)*(1-%s)*(1-%s)*(1-%s)*(1-%s))"),as.list(rules_for_resistance[[1]]$loci)))
 
 rules_for_resistance[[2]] <- list()
 rules_for_resistance[[2]]$loci <- paste("Marker",c(6,19,81,96,115,127),sep="")
-rules_for_resistance[[2]]$rules <- do.call(sprintf,c(list("(%s)&(%s|%s|%s|%s|%s)"),as.list(rules_for_resistance[[2]]$loci)))
+rules_for_resistance[[2]]$rules <- do.call(sprintf,c(list("(%s)*(1-((1-%s)*(1-%s)*(1-%s)*(1-%s)*(1-%s)))"),as.list(rules_for_resistance[[2]]$loci)))
 
 rules_for_resistance[[3]] <- list()
 rules_for_resistance[[3]]$loci <- paste("Marker",c(3,48,102,111),sep="")
-rules_for_resistance[[3]]$rules <- do.call(sprintf,c(list("(%s&%s&%s&%s)"),as.list(rules_for_resistance[[3]]$loci)))
+rules_for_resistance[[3]]$rules <- do.call(sprintf,c(list("(%s*%s*%s*%s)"),as.list(rules_for_resistance[[3]]$loci)))
 
 rules_for_resistance
 
